@@ -4,7 +4,7 @@ uvicorn==0.30.0
 streamlit==1.40.1
 chromadb==0.5.3
 google-generativeai==0.8.3
-tree-sitter==0.21.3
+tree-sitter>=0.22.0
 tree-sitter-python==0.23.6
 tree-sitter-javascript==0.23.0
 python-dotenv==1.0.1
