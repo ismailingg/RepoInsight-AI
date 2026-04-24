@@ -231,6 +231,13 @@ def chunk_all_files(files: list[dict],
         removed = before - len(files)
         if removed > 0:
             print(f"[INFO] Filtered out {removed} example/tutorial files\n")
+    # Filter out test files if requested
+    if skip_tests:
+        before = len(files)
+        files = [f for f in files if not is_test_file(f["relative_path"])]
+        removed = before - len(files)
+        if removed > 0:
+            print(f"[INFO] Filtered out {removed} test files\n")
 
     # Sort by priority: core files first, tests last
     sorted_files = sorted(
