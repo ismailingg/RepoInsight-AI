@@ -10,6 +10,7 @@ env/
 
 # ChromaDB data
 data/
+data/chunks_cache.json
 data/chroma_db/
 data/temp_repos/
 
