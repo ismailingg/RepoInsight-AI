@@ -139,6 +139,13 @@ def embed_batch(chunks: List[Dict]) -> List[List[float]]:
 
     for i, chunk in enumerate(chunks):
         text = truncate_content(chunk["content"])
+        
+        # skip empty chunks
+        if not text or not text.strip():
+            print(f"\n  [SKIP] Empty chunk: {chunk['relative_path']} line {chunk['start_line']}")
+            text = f"# empty chunk from {chunk['relative_path']}"
+
+            
         embedding = embed_single(text)
         embeddings.append(embedding)
 
