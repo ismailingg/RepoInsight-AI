@@ -1,36 +1,51 @@
-import os
 import json
-from backend.core.cloner import ingest_repo
-from backend.core.chunker import chunk_all_files
-from backend.core.embedder import embed_and_store
+from backend.core.retriever import retrieve
 
-CACHE_FILE  = "./data/chunks_cache.json"
-REPO_URL    = "https://github.com/pallets/flask"
+# Load cached chunks for grep search
+with open("./data/chunks_cache.json", "r") as f:
+    all_chunks = json.load(f)
 
-# ── Load from cache if available ────────────────────────────────
-if os.path.exists(CACHE_FILE):
-    print("=== Loaded cached chunks (skipping clone + chunk) ===")
-    with open(CACHE_FILE, "r") as f:
-        chunks = json.load(f)
-    print(f"✓ {len(chunks)} chunks loaded from cache\n")
-else:
-    print("=== Phase 1: Cloning repo ===")
-    files = ingest_repo(REPO_URL)
+REPO_URL = "https://github.com/pallets/flask"
 
-    print("\n=== Phase 2: Chunking files ===")
-    chunks = chunk_all_files(files, skip_tests=True, skip_examples=True)
+# Test 1: Meaning-based question (semantic should shine)
+print("\n" + "="*50)
+print("TEST 1: Meaning-based question")
+print("="*50)
+result1 = retrieve(
+    question="how does flask handle request context?",
+    repo_url=REPO_URL,
+    all_chunks=all_chunks
+)
 
-    os.makedirs("./data", exist_ok=True)
-    with open(CACHE_FILE, "w") as f:
-        json.dump(chunks, f)
-    print(f"✓ Chunks cached — won't re-clone next run\n")
+# Test 2: Name-based question (grep should shine)
+print("\n" + "="*50)
+print("TEST 2: Identifier-based question")
+print("="*50)
+result2 = retrieve(
+    question="where is push_appctx used?",
+    repo_url=REPO_URL,
+    all_chunks=all_chunks
+)
 
-# ── Phase 3 ──────────────────────────────────────────────────────
-stats = embed_and_store(chunks, REPO_URL)
+# Show results
+print("\n" + "="*50)
+print("TOP 5 RESULTS — Test 1")
+print("="*50)
+for chunk in result1["chunks"][:5]:
+    print(f"\n  File:       {chunk['file']}")
+    print(f"  Lines:      {chunk['start_line']} → {chunk['end_line']}")
+    print(f"  Similarity: {chunk['similarity']}")
+    print(f"  Source:     {chunk['source']}")
+    print(f"  Preview:    {chunk['content'][:100]}...")
 
-print("\n=== Final Statistics ===")
-print(f"Total chunks:        {stats['total_chunks']}")
-print(f"Unique chunks:       {stats['unique_chunks']}")
-print(f"Embedded:            {stats['embedded']}")
-if "collection_name" in stats:
-    print(f"ChromaDB collection: {stats['collection_name']}")
+print("\n" + "="*50)
+print("TOP 5 RESULTS — Test 2")
+print("="*50)
+for chunk in result2["chunks"][:5]:
+    print(f"\n  File:       {chunk['file']}")
+    print(f"  Lines:      {chunk['start_line']} → {chunk['end_line']}")
+    print(f"  Similarity: {chunk['similarity']}")
+    print(f"  Source:     {chunk['source']}")
+    if "matched_identifier" in chunk:
+        print(f"  Matched:    {chunk['matched_identifier']}")
+    print(f"  Preview:    {chunk['content'][:100]}...")
