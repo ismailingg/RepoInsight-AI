@@ -78,35 +78,26 @@ def semantic_search(question: str, collection) -> List[Dict]:
 
 def extract_identifiers(question: str) -> List[str]:
     """
-    Extract specific identifiers from the question.
-    Looks for: function names, variable names, class names, file names.
-
-    Examples:
-      "how does verify_token work?"  → ["verify_token"]
-      "where is MAX_RETRIES used?"   → ["MAX_RETRIES"]
-      "what does AuthManager do?"    → ["AuthManager"]
+    Extract only REAL code identifiers — not plain English words.
+    Only matches: snake_case, UPPER_CASE, camelCase, PascalCase
+    with at least one underscore OR capital letter pattern.
     """
     identifiers = []
 
-    # snake_case (function/variable names): verify_token, max_retries
-    snake_case = re.findall(r'\b[a-z][a-z0-9_]{2,}\b', question)
+    # snake_case with underscore (real identifiers): verify_token, push_appctx
+    # Requires at least one underscore to avoid plain English words
+    snake_case = re.findall(r'\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b', question)
     identifiers.extend(snake_case)
 
-    # UPPER_CASE (constants): MAX_RETRIES, SECRET_KEY
-    upper_case = re.findall(r'\b[A-Z][A-Z0-9_]{2,}\b', question)
+    # UPPER_CASE constants: MAX_RETRIES, SECRET_KEY
+    upper_case = re.findall(r'\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b', question)
     identifiers.extend(upper_case)
 
-    # CamelCase (class names): AuthManager, UserService
-    camel_case = re.findall(r'\b[A-Z][a-z]+[A-Z][a-zA-Z]*\b', question)
-    identifiers.extend(camel_case)
+    # PascalCase class names: AuthManager, UserService, AppContext
+    pascal_case = re.findall(r'\b[A-Z][a-z]+(?:[A-Z][a-zA-Z]*)+\b', question)
+    identifiers.extend(pascal_case)
 
-    # Remove common English words that slip through
-    stopwords = {"how", "does", "what", "where", "why", "when",
-                 "the", "and", "for", "are", "not", "with", "this",
-                 "that", "from", "used", "use", "show", "find", "get"}
-    identifiers = [i for i in identifiers if i.lower() not in stopwords]
-
-    # Deduplicate while preserving order
+    # Deduplicate
     seen = set()
     unique = []
     for i in identifiers:
@@ -115,8 +106,6 @@ def extract_identifiers(question: str) -> List[str]:
             unique.append(i)
 
     return unique
-
-
 def file_importance_score(filepath: str) -> int:
     """Higher score = more important file = ranked higher in grep results."""
     name = os.path.basename(filepath).lower()
