@@ -1,11 +1,12 @@
 import time
 from typing import List, Dict, Tuple
-import google.generativeai as genai
-from backend.config import GOOGLE_API_KEY, GEMINI_MODEL
+# import google.generativeai as genai
+# from backend.config import GOOGLE_API_KEY, GEMINI_MODEL
 
-# Initialize Gemini
-genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel(GEMINI_MODEL)
+# # Initialize Gemini
+# genai.configure(api_key=GOOGLE_API_KEY)
+# model = genai.GenerativeModel(GEMINI_MODEL)
+from backend.utils.llm import call_llm
 
 # Constants
 FIND_ALL_THRESHOLD  = 0.45   # minimum similarity for FIND_ALL path
@@ -45,9 +46,7 @@ Rules:
 - No explanation, no punctuation, just the word"""
 
     try:
-        response = model.generate_content(prompt)
-        intent = response.text.strip().upper()
-
+        intent = call_llm(prompt).upper()
         # Validate response
         if intent not in ("EXPLAIN", "FIND_ALL"):
             print(f"  [WARN] Unexpected intent response: '{intent}' — defaulting to FIND_ALL")
@@ -129,9 +128,8 @@ def rerank_chunks(question: str, chunks: List[Dict]) -> List[Dict]:
     prompt = build_rerank_prompt(question, chunks)
 
     try:
-        response   = model.generate_content(prompt)
-        scores     = parse_rerank_scores(response.text, len(chunks))
-
+        response_text = call_llm(prompt)
+        scores = parse_rerank_scores(response_text, len(chunks))
         # Attach scores to chunks
         for i, chunk in enumerate(chunks):
             chunk["rerank_score"] = scores[i]

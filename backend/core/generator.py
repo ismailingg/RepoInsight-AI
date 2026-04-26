@@ -2,12 +2,13 @@ import re
 import json
 import time
 from typing import List, Dict, Optional
-import google.generativeai as genai
-from backend.config import GOOGLE_API_KEY, GEMINI_MODEL
+# import google.generativeai as genai
+# from backend.config import GOOGLE_API_KEY, GEMINI_MODEL
 
-# Initialize Gemini
-genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel(GEMINI_MODEL)
+# # Initialize Gemini
+# genai.configure(api_key=GOOGLE_API_KEY)
+# model = genai.GenerativeModel(GEMINI_MODEL)
+from backend.utils.llm import call_llm
 
 # Constants
 OUT_OF_SCOPE_THRESHOLD = 0.4   # below this = question not about this codebase
@@ -41,10 +42,10 @@ Rules:
 - Reply with ONLY 3 lines, one sub-question per line, no numbering, no bullets"""
 
     try:
-        response     = model.generate_content(prompt)
+        response = call_llm(prompt)
         sub_questions = [
             line.strip()
-            for line in response.text.strip().split("\n")
+            for line in response_text.strip().split("\n")
             if line.strip()
         ][:3]   # take max 3
 
@@ -171,8 +172,7 @@ Reply with one line per file in format:
 <filename>: <one sentence description>"""
 
     try:
-        response = model.generate_content(summary_prompt)
-        return response.text
+       return call_llm(summary_prompt)
     except Exception as e:
         print(f"  [WARN] File summarization failed: {e}")
         # Fallback: just concatenate file names and first chunk content
@@ -244,8 +244,7 @@ def generate_answer(question: str, chunks: List[Dict],
     prompt = build_answer_prompt(question, chunks)
 
     try:
-        response    = model.generate_content(prompt)
-        answer_text = response.text.strip()
+        answer_text = call_llm(prompt)
 
         # Validate citations
         answer_text = validate_citations(answer_text, valid_files)
