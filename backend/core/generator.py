@@ -13,7 +13,7 @@ from backend.utils.llm import call_llm
 # Constants
 OUT_OF_SCOPE_THRESHOLD = 0.4   # below this = question not about this codebase
 WIDE_ANSWER_FILE_CAP   = 5     # above this many files = use two-pass summarization
-MAX_CONTEXT_CHARS      = 12000 # max total chars to send to Gemini in one call
+MAX_CONTEXT_CHARS      = 40000 # max total chars to send to Gemini in one call
 
 
 # ── Query Expansion ─────────────────────────────────────────────
@@ -45,7 +45,7 @@ Rules:
         response = call_llm(prompt)
         sub_questions = [
             line.strip()
-            for line in response_text.strip().split("\n")
+            for line in response_text.split("\n")
             if line.strip()
         ][:3]   # take max 3
 
