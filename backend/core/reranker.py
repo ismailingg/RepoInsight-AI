@@ -214,7 +214,7 @@ def rerank(question: str, chunks: List[Dict]) -> Dict:
     else:  # FIND_ALL
         # Return everything above threshold
         final_chunks = filter_find_all(chunks)
-        print(f"  ✓ {len(final_chunks)} chunks above threshold ({FIND_ALL_THRESHOLD})")
+        print(f"  ✓ {len(final_chunks)} chunks returned")
         for c in final_chunks:
             print(f"    {c['file']}:{c['start_line']} "
                   f"(similarity: {c['similarity']})")
