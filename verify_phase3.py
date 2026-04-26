@@ -1,23 +1,23 @@
-# verify_phase3.py
-import chromadb
-import hashlib
+# test_grep.py
+import json
+from backend.core.retriever import extract_identifiers, grep_search
 
-CHROMA_DB_PATH = "./data/chroma_db"
-repo_url = "https://github.com/pallets/flask"
+with open("./data/chunks_cache.json", "r") as f:
+    all_chunks = json.load(f)
 
-client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
+# Test with a function that definitely exists in Flask
+questions = [
+    "where is full_dispatch_request used?",
+    "how does push_appctx work?",
+    "where is AppContext defined?",
+    "how does teardown_appcontext work?",
+]
 
-repo_hash = hashlib.md5(repo_url.encode()).hexdigest()[:16]
-collection = client.get_collection(f"repo_{repo_hash}")
-
-print(f"Collection: {collection.name}")
-print(f"Total chunks stored: {collection.count()}")
-
-# Peek at first 3 chunks
-results = collection.peek(limit=3)
-print(f"\nSample chunks:")
-for i in range(len(results['ids'])):
-    print(f"\n  ID:    {results['ids'][i]}")
-    print(f"  File:  {results['metadatas'][i]['file']}")
-    print(f"  Lines: {results['metadatas'][i]['start_line']} → {results['metadatas'][i]['end_line']}")
-    print(f"  Preview: {results['documents'][i][:80]}...")
+for question in questions:
+    identifiers = extract_identifiers(question)
+    chunks = grep_search(identifiers, None, all_chunks)
+    print(f"\nQ: {question}")
+    print(f"   Identifiers: {identifiers}")
+    print(f"   Chunks found: {len(chunks)}")
+    for c in chunks[:3]:
+        print(f"     → {c['file']}:{c['start_line']}")

@@ -106,6 +106,8 @@ def extract_identifiers(question: str) -> List[str]:
             unique.append(i)
 
     return unique
+
+    
 def file_importance_score(filepath: str) -> int:
     """Higher score = more important file = ranked higher in grep results."""
     name = os.path.basename(filepath).lower()
