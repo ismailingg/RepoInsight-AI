@@ -8,7 +8,7 @@ genai.configure(api_key=GOOGLE_API_KEY)
 model = genai.GenerativeModel(GEMINI_MODEL)
 
 # Constants
-FIND_ALL_THRESHOLD  = 0.75   # minimum similarity for FIND_ALL path
+FIND_ALL_THRESHOLD  = 0.45   # minimum similarity for FIND_ALL path
 EXPLAIN_TOP_N       = 3      # how many chunks to keep for EXPLAIN path
 MIN_RERANK_SCORE    = 5      # minimum Gemini score (1-10) to keep a chunk
 LOWERED_THRESHOLD   = 3      # fallback if fewer than 3 chunks score above 5
