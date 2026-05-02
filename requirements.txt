@@ -9,3 +9,16 @@ tree-sitter-python==0.23.6
 tree-sitter-javascript==0.23.0
 python-dotenv==1.0.1
 openai==1.30.0
+# Database
+psycopg2-binary==2.9.9
+sqlalchemy==2.0.23
+alembic==1.13.1
+# Auth
+python-jose[cryptography]==3.3.0
+bcrypt==4.1.2
+passlib[bcrypt]==1.7.4
+# Encryption
+cryptography==41.0.7
+# New LLM providers
+anthropic==0.23.1
+groq==0.4.2
