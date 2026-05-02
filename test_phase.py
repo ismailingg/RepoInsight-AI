@@ -1,12 +1,11 @@
-# test_db.py (run once, then delete)
-from backend.db.connection import init_db, engine
-from sqlalchemy import text
+# test_crypto.py
+from backend.utils.crypto import encrypt_key, decrypt_key
 
-# Test connection
-with engine.connect() as conn:
-    result = conn.execute(text("SELECT version()"))
-    print("✓ Connected to PostgreSQL:", result.fetchone()[0])
+original = "sk-test-key-12345"
+encrypted = encrypt_key(original)
+decrypted = decrypt_key(encrypted)
 
-# Create tables
-init_db()
-print("✓ All tables created successfully")
+print(f"Original:  {original}")
+print(f"Encrypted: {encrypted[:40]}...")
+print(f"Decrypted: {decrypted}")
+print(f"Match: {original == decrypted}")
