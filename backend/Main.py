@@ -1,7 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from backend.db.connection import init_db
 from backend.api.ingest import router as ingest_router
 from backend.api.query  import router as query_router
+from backend.api.auth   import router as auth_router
 
 app = FastAPI(
     title       = "RepoInsight AI",
@@ -9,7 +11,6 @@ app = FastAPI(
     version     = "1.0.0"
 )
 
-# Allow Streamlit frontend to call the API
 app.add_middleware(
     CORSMiddleware,
     allow_origins     = ["*"],
@@ -18,7 +19,11 @@ app.add_middleware(
     allow_headers     = ["*"],
 )
 
-# Register routers
+@app.on_event("startup")
+def startup():
+    init_db()
+
+app.include_router(auth_router,   tags=["Auth"])
 app.include_router(ingest_router, tags=["Ingestion"])
 app.include_router(query_router,  tags=["Query"])
 
@@ -29,6 +34,9 @@ def root():
         "name":    "RepoInsight AI",
         "status":  "running",
         "endpoints": [
+            "POST /auth/register",
+            "POST /auth/login",
+            "GET  /auth/me",
             "POST /ingest",
             "GET  /status/{job_id}",
             "POST /query"
