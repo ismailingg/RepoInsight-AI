@@ -182,7 +182,7 @@ h1, h2, h3 { font-family: 'Syne', sans-serif !important; letter-spacing: -0.02em
 [data-testid="stRadio"] label {
     font-family: 'Space Mono', monospace !important;
     font-size: 11px !important;
-    color: #555 !important;
+    color: #aaa !important;
     letter-spacing: 0.1em !important;
 }
 
@@ -253,7 +253,7 @@ with st.sidebar:
                 </div>""", unsafe_allow_html=True)
     else:
         st.markdown("""
-        <div style='font-size:10px;color:#2a2a2a;font-family:Space Mono,monospace;'>
+        <div style='font-size:10px;color:#444;font-family:Space Mono,monospace;'>
             ○ no index loaded
         </div>""", unsafe_allow_html=True)
 
@@ -275,7 +275,7 @@ if page == "INGEST":
                     margin-bottom:16px;'>
             Index a Repository
         </div>
-        <div style='font-size:12px;color:#3a3a3a;font-family:Space Mono,monospace;
+        <div style='font-size:12px;color:#666;font-family:Space Mono,monospace;
                     max-width:480px;line-height:1.8;'>
             Clone → parse → chunk → embed → store.<br>
             Ask questions in minutes.
@@ -298,7 +298,7 @@ if page == "INGEST":
 
         st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
         st.markdown("""
-        <div style='font-size:9px;color:#333;letter-spacing:0.18em;
+        <div style='font-size:9px;color:#666;letter-spacing:0.18em;
                     text-transform:uppercase;font-family:Space Mono,monospace;
                     margin-bottom:14px;'>
             Index Scope
@@ -343,7 +343,7 @@ if page == "INGEST":
                 Pipeline
             </div>
             <div style='font-family:Space Mono,monospace;font-size:11px;
-                        color:#2e2e2e;line-height:2.4;'>
+                        color:#555;line-height:2.4;'>
                 <span style='color:#ff5000;margin-right:12px;'>01</span>Clone to temp dir<br>
                 <span style='color:#ff5000;margin-right:12px;'>02</span>Filter non-code files<br>
                 <span style='color:#ff5000;margin-right:12px;'>03</span>Parse AST boundaries<br>
@@ -354,12 +354,12 @@ if page == "INGEST":
         </div>
         <div style='border:1px solid #161616;border-top:1px solid #161616;
                     padding:20px;background:#0d0d0d;margin-top:1px;'>
-            <div style='font-size:9px;color:#2a2a2a;letter-spacing:0.18em;
+            <div style='font-size:9px;color:#555;letter-spacing:0.18em;
                         text-transform:uppercase;font-family:Space Mono,monospace;
                         margin-bottom:10px;'>
                 Languages
             </div>
-            <div style='font-family:Space Mono,monospace;font-size:10px;color:#2e2e2e;
+            <div style='font-family:Space Mono,monospace;font-size:10px;color:#555;
                         line-height:2;'>
                 py · js · ts · java · go · rs · rb · cpp · cs · swift
             </div>
@@ -452,7 +452,7 @@ elif page == "QUERY":
                     margin-bottom:16px;'>
             Ask the Codebase
         </div>
-        <div style='font-size:12px;color:#3a3a3a;font-family:Space Mono,monospace;
+        <div style='font-size:12px;color:#666;font-family:Space Mono,monospace;
                     max-width:480px;line-height:1.8;'>
             Every answer cites its source — file, line, snippet.
         </div>
