@@ -1,10 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.db.connection import init_db
-from backend.api.ingest import router as ingest_router
-from backend.api.query  import router as query_router
-from backend.api.auth   import router as auth_router
-from backend.api.keys   import router as keys_router
+from backend.api.ingest   import router as ingest_router
+from backend.api.query    import router as query_router
+from backend.api.auth     import router as auth_router
+from backend.api.keys     import router as keys_router
+from backend.api.sessions import router as sessions_router
 
 app = FastAPI(
     title       = "RepoInsight AI",
@@ -24,10 +25,11 @@ app.add_middleware(
 def startup():
     init_db()
 
-app.include_router(auth_router,   tags=["Auth"])
-app.include_router(keys_router,   tags=["API Keys"])
-app.include_router(ingest_router, tags=["Ingestion"])
-app.include_router(query_router,  tags=["Query"])
+app.include_router(auth_router,     tags=["Auth"])
+app.include_router(keys_router,     tags=["API Keys"])
+app.include_router(sessions_router, tags=["Repo Sessions"])
+app.include_router(ingest_router,   tags=["Ingestion"])
+app.include_router(query_router,    tags=["Query"])
 
 
 @app.get("/")
@@ -42,6 +44,10 @@ def root():
             "POST /keys",
             "GET  /keys",
             "DELETE /keys/{provider}/{key_type}",
+            "GET  /repos",
+            "GET  /repos/chat?repo_url=...",
+            "POST /repos/chat/append",
+            "POST /repos/chat/clear",
             "POST /ingest",
             "GET  /status/{job_id}",
             "POST /query"
