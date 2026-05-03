@@ -263,48 +263,91 @@ def show_settings():
 
     with left:
         st.markdown('<div style="font-size:9px;color:#ff5000;letter-spacing:0.18em;text-transform:uppercase;font-family:Space Mono,monospace;margin-bottom:16px;">Embedding Provider</div>', unsafe_allow_html=True)
-        ep = st.selectbox("EP", ["google","openai"], format_func=lambda x:{"google":"Google (free tier)","openai":"OpenAI (paid)"}[x], label_visibility="collapsed", key="ep")
-        em_models = {"google":["models/gemini-embedding-001","models/gemini-embedding-2"],"openai":["text-embedding-3-small","text-embedding-3-large"]}
-        em = st.selectbox("EM", em_models[ep], label_visibility="collapsed", key="em")
+        ep = st.selectbox("EP", ["google","openai"],
+            format_func=lambda x:{"google":"Google (free tier)","openai":"OpenAI (paid)"}[x],
+            label_visibility="collapsed", key="ep")
+
+        em_models = {
+            "google": ["models/gemini-embedding-001", "models/gemini-embedding-2", "Enter your model name"],
+            "openai": ["text-embedding-3-small", "text-embedding-3-large", "Enter your model name"]
+        }
+        em_selected = st.selectbox("EM", em_models[ep], label_visibility="collapsed", key="em")
+
+        if em_selected == "Enter your model name":
+            em = st.text_input(
+                "Custom embedding model name",
+                placeholder="e.g. models/gemini-embedding-3",
+                key="em_custom"
+            )
+            st.markdown("""
+            <div style='font-size:10px;color:#444;font-family:Space Mono,monospace;margin-top:4px;'>
+                Check provider docs for available embedding models
+            </div>""", unsafe_allow_html=True)
+        else:
+            em = em_selected
+
         ex_em = existing.get(f"{ep}_embedding")
         if ex_em:
             st.markdown(f'<div style="font-size:10px;color:#ff5000;font-family:Space Mono,monospace;margin-bottom:8px;">✓ Key saved — {ex_em}</div>', unsafe_allow_html=True)
+
         ek = st.text_input("Embedding API Key", type="password", placeholder="Paste key here", key="ek")
+
         if st.button("SAVE EMBEDDING KEY →", type="primary", use_container_width=True, key="save_ek"):
-            if ek:
+            if not ek:
+                st.error("Paste your key first")
+            elif not em:
+                st.error("Enter a model name")
+            else:
                 r = api("POST", "/keys/", json={"provider":ep,"key_type":"embedding","api_key":ek,"model_name":em})
                 if r and r.status_code == 201:
                     st.success(f"✓ {ep} embedding key saved"); st.rerun()
                 else:
                     st.error(r.json().get("detail") if r else "Failed")
-            else:
-                st.error("Paste your key first")
 
     with right:
         st.markdown('<div style="font-size:9px;color:#ff5000;letter-spacing:0.18em;text-transform:uppercase;font-family:Space Mono,monospace;margin-bottom:16px;">LLM Provider</div>', unsafe_allow_html=True)
         lp = st.selectbox("LP", ["openrouter","groq","openai","anthropic"],
             format_func=lambda x:{"openrouter":"OpenRouter (free models)","groq":"Groq (free, fast)","openai":"OpenAI (paid)","anthropic":"Anthropic (paid)"}[x],
             label_visibility="collapsed", key="lp")
+
         lm_models = {
-            "openrouter":["google/gemini-2.0-flash-exp:free","meta-llama/llama-3.3-70b-instruct:free","deepseek/deepseek-chat-v3-0324:free"],
-            "groq":["llama-3.3-70b-versatile","llama-3.1-8b-instant","mixtral-8x7b-32768"],
-            "openai":["gpt-4o-mini","gpt-4o"],
-            "anthropic":["claude-haiku-4-5","claude-sonnet-4-5"]
+            "openrouter": ["google/gemini-2.5-flash:free", "meta-llama/llama-3.3-70b-instruct:free", "Enter your model name"],
+            "groq":       ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "Enter your model name"],
+            "openai":     ["gpt-4o-mini", "gpt-4o", "Enter your model name"],
+            "anthropic":  ["claude-haiku-4-5", "claude-sonnet-4-5", "Enter your model name"]
         }
-        lm = st.selectbox("LM", lm_models[lp], label_visibility="collapsed", key="lm")
+        lm_selected = st.selectbox("LM", lm_models[lp], label_visibility="collapsed", key="lm")
+
+        if lm_selected == "Enter your model name":
+            lm = st.text_input(
+                "Enter your model name",
+                placeholder="e.g. anthropic/claude-opus-4",
+                key="lm_custom"
+            )
+            st.markdown("""
+            <div style='font-size:10px;color:#444;font-family:Space Mono,monospace;margin-top:4px;'>
+                Browse models at openrouter.ai/models
+            </div>""", unsafe_allow_html=True)
+        else:
+            lm = lm_selected
+
         ex_lm = existing.get(f"{lp}_llm")
         if ex_lm:
             st.markdown(f'<div style="font-size:10px;color:#ff5000;font-family:Space Mono,monospace;margin-bottom:8px;">✓ Key saved — {ex_lm}</div>', unsafe_allow_html=True)
+
         lk = st.text_input("LLM API Key", type="password", placeholder="Paste key here", key="lk")
+
         if st.button("SAVE LLM KEY →", type="primary", use_container_width=True, key="save_lk"):
-            if lk:
+            if not lk:
+                st.error("Paste your key first")
+            elif not lm:
+                st.error("Enter a model name")
+            else:
                 r = api("POST", "/keys/", json={"provider":lp,"key_type":"llm","api_key":lk,"model_name":lm})
                 if r and r.status_code == 201:
                     st.success(f"✓ {lp} LLM key saved"); st.rerun()
                 else:
                     st.error(r.json().get("detail") if r else "Failed")
-            else:
-                st.error("Paste your key first")
 
     if existing:
         st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
