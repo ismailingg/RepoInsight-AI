@@ -1,37 +1,17 @@
 import re
-import json
 import time
 from typing import List, Dict, Optional
-# import google.generativeai as genai
-# from backend.config import GOOGLE_API_KEY, GEMINI_MODEL
 
-# # Initialize Gemini
-# genai.configure(api_key=GOOGLE_API_KEY)
-# model = genai.GenerativeModel(GEMINI_MODEL)
-from backend.utils.llm import call_llm
-
-# Constants
-OUT_OF_SCOPE_THRESHOLD = 0.4   # below this = question not about this codebase
-WIDE_ANSWER_FILE_CAP   = 5     # above this many files = use two-pass summarization
-MAX_CONTEXT_CHARS      = 40000 # max total chars to send to Gemini in one call
+OUT_OF_SCOPE_THRESHOLD = 0.2
+WIDE_ANSWER_FILE_CAP   = 5
+MAX_CONTEXT_CHARS      = 40000
 
 
-# ── Query Expansion ─────────────────────────────────────────────
+def expand_query(question: str, provider: str, api_key: str, model: str) -> List[str]:
+    from backend.utils.llm import call_llm
 
-def expand_query(question: str) -> List[str]:
-    """
-    Ask Gemini to rewrite the question into 3 specific sub-questions.
-    This catches answers spread across multiple aspects of the codebase.
-    
-    Example:
-      Input:  "how does flask handle errors?"
-      Output: ["how does flask catch exceptions in routes?",
-               "where is error handling middleware defined?",
-               "what is the default error response format?"]
-    """
-    prompt = f"""You are helping search a codebase. Rewrite this developer question 
+    prompt = f"""You are helping search a codebase. Rewrite this developer question
 into 3 specific sub-questions that together cover all aspects of the answer.
-Each sub-question should focus on a different angle.
 
 Original question: "{question}"
 
@@ -39,17 +19,16 @@ Rules:
 - Each sub-question must be specific and searchable
 - Cover different aspects (definition, usage, configuration)
 - Keep each sub-question under 15 words
-- Reply with ONLY 3 lines, one sub-question per line, no numbering, no bullets"""
+- Reply with ONLY 3 lines, one sub-question per line, no numbering"""
 
     try:
-        response = call_llm(prompt)
+        response_text = call_llm(prompt, provider, api_key, model)
         sub_questions = [
             line.strip()
             for line in response_text.split("\n")
             if line.strip()
-        ][:3]   # take max 3
+        ][:3]
 
-        # Fallback if Gemini returns fewer than 3
         while len(sub_questions) < 3:
             sub_questions.append(question)
 
@@ -60,87 +39,45 @@ Rules:
         return [question, question, question]
 
 
-# ── Out-of-scope check ──────────────────────────────────────────
-
 def is_out_of_scope(chunks: List[Dict]) -> bool:
-    """
-    Check if the question is out of scope for this codebase.
-    If no chunks score above OUT_OF_SCOPE_THRESHOLD, the question
-    is probably about an external library or unrelated topic.
-    """
     if not chunks:
         return True
-
     max_similarity = max(c["similarity"] for c in chunks)
     return max_similarity < OUT_OF_SCOPE_THRESHOLD
 
 
-# ── Citation validation ─────────────────────────────────────────
-
 def validate_citations(answer: str, valid_files: List[str]) -> str:
-    """
-    Check answer text for hallucinated file citations.
-    If Gemini mentions a file that doesn't exist in valid_files,
-    replace it with a warning note.
-    """
-    # Find all file-like patterns in the answer
-    # Matches things like: auth/login.py, src/flask/app.py
-    file_pattern = re.compile(r'\b[\w/\\]+\.(?:py|js|ts|java|go|rb|php)\b')
-    mentioned_files = file_pattern.findall(answer)
+    file_pattern  = re.compile(r'\b[\w/\\]+\.(?:py|js|ts|java|go|rb|php|cs|cpp|c|swift)\b')
+    mentioned     = file_pattern.findall(answer)
+    hallucinated  = []
 
-    hallucinated = []
-    for mentioned in mentioned_files:
-        # Normalize path separators for comparison
-        normalized = mentioned.replace("\\", "/")
-        valid_normalized = [f.replace("\\", "/") for f in valid_files]
-
+    for f in mentioned:
+        normalized       = f.replace("\\", "/")
+        valid_normalized = [v.replace("\\", "/") for v in valid_files]
         if normalized not in valid_normalized:
-            hallucinated.append(mentioned)
+            hallucinated.append(f)
 
     if hallucinated:
         warning = (f"\n\n⚠️ Note: The following files were cited but could not be "
                    f"verified in the indexed codebase: {', '.join(hallucinated)}")
         answer += warning
-        print(f"  [WARN] Hallucinated citations detected: {hallucinated}")
+        print(f"  [WARN] Hallucinated citations: {hallucinated}")
 
     return answer
 
 
-# ── Confidence score ────────────────────────────────────────────
-
 def calculate_confidence(chunks: List[Dict]) -> float:
-    """
-    Calculate a confidence score for the answer based on:
-    - Average similarity of top chunks
-    - Whether chunks were found by both semantic + grep
-    - Number of chunks available
-    """
     if not chunks:
         return 0.0
-
-    # Base: average similarity of chunks used
     avg_similarity = sum(c["similarity"] for c in chunks) / len(chunks)
-
-    # Bonus: chunks found by both searches
-    both_count = sum(1 for c in chunks if c.get("source") == "both")
-    both_bonus = min(0.1, both_count * 0.03)
-
-    # Bonus: more chunks = more evidence
+    both_bonus     = min(0.1, sum(1 for c in chunks if c.get("source") == "both") * 0.03)
     coverage_bonus = min(0.05, len(chunks) * 0.01)
-
-    confidence = avg_similarity + both_bonus + coverage_bonus
-    return round(min(1.0, confidence), 3)
+    return round(min(1.0, avg_similarity + both_bonus + coverage_bonus), 3)
 
 
-# ── Two-pass summarization (wide answers) ──────────────────────
+def summarize_files(question: str, chunks: List[Dict], provider: str, api_key: str, model: str) -> str:
+    from backend.utils.llm import call_llm
 
-def summarize_files(question: str, chunks: List[Dict]) -> str:
-    """
-    For wide answers (5+ files): summarize each file's role first,
-    then synthesize in a second call.
-    Prevents stuffing too much context into one giant prompt.
-    """
-    # Group chunks by file
     files = {}
     for chunk in chunks:
         f = chunk["file"]
@@ -148,47 +85,29 @@ def summarize_files(question: str, chunks: List[Dict]) -> str:
             files[f] = []
         files[f].append(chunk)
 
-    # First pass: summarize each file's contribution
     file_summaries = []
     for filepath, file_chunks in files.items():
-        combined_content = "\n\n".join(
-            c["content"][:300] for c in file_chunks
-        )
-        file_summaries.append(
-            f"File: {filepath}\n"
-            f"Relevant code:\n{combined_content}"
-        )
+        combined = "\n\n".join(c["content"][:300] for c in file_chunks)
+        file_summaries.append(f"File: {filepath}\n{combined}")
 
     summaries_text = "\n\n---\n\n".join(file_summaries)
 
-    summary_prompt = f"""Question: "{question}"
+    prompt = f"""Question: "{question}"
 
-The following files are relevant. For each file, write ONE sentence 
-describing how it relates to the question.
+For each file below, write ONE sentence describing how it relates to the question.
 
 {summaries_text[:8000]}
 
-Reply with one line per file in format:
-<filename>: <one sentence description>"""
+Reply with one line per file: <filename>: <one sentence>"""
 
     try:
-       return call_llm(summary_prompt)
+        return call_llm(prompt, provider, api_key, model)
     except Exception as e:
         print(f"  [WARN] File summarization failed: {e}")
-        # Fallback: just concatenate file names and first chunk content
-        return "\n".join(
-            f"{f}: {chunks[0]['content'][:200]}"
-            for f, chunks in files.items()
-        )
+        return "\n".join(f"{f}: relevant file" for f in files.keys())
 
 
-# ── Main answer generation ──────────────────────────────────────
-
-def build_answer_prompt(question: str, chunks: List[Dict],
-                         file_summaries: str = None) -> str:
-    """Build the final answer generation prompt."""
-
-    # Format chunks as context
+def build_answer_prompt(question: str, chunks: List[Dict], file_summaries: str = None) -> str:
     context_parts = []
     total_chars   = 0
 
@@ -198,65 +117,57 @@ def build_answer_prompt(question: str, chunks: List[Dict],
             f"(lines {chunk['start_line']}-{chunk['end_line']})\n"
             f"{chunk['content']}"
         )
-
         if total_chars + len(chunk_text) > MAX_CONTEXT_CHARS:
             print(f"  [INFO] Context limit reached — using {len(context_parts)} chunks")
             break
-
         context_parts.append(chunk_text)
         total_chars += len(chunk_text)
 
     context = "\n\n---\n\n".join(context_parts)
 
-    # Add file summaries if wide answer
     summary_section = ""
     if file_summaries:
-        summary_section = f"""
-FILE ROLE SUMMARY:
-{file_summaries}
-
-"""
+        summary_section = f"\nFILE ROLE SUMMARY:\n{file_summaries}\n"
 
     return f"""You are a codebase expert answering questions about source code.
 Answer based ONLY on the provided code context. Do not invent or assume.
 
 Question: "{question}"
 
-{summary_section}CODE CONTEXT:
+{summary_section}
+CODE CONTEXT:
 {context}
 
 Instructions:
 - Answer clearly and specifically
 - Cite every file and line number you reference like this: [filename:line]
 - If the answer spans multiple files, explain each file's role
-- If something is unclear from the context, say so explicitly
+- If something is unclear from the context, say so
 - End with a brief summary sentence
 
 Answer:"""
 
 
-def generate_answer(question: str, chunks: List[Dict],
-                    valid_files: List[str]) -> Dict:
-    """
-    Generate a cited answer from the final chunks.
-    Returns structured JSON with answer, sources, confidence.
-    """
+def generate_answer(
+    question:    str,
+    chunks:      List[Dict],
+    valid_files: List[str],
+    provider:    str,
+    api_key:     str,
+    model:       str
+) -> str:
+    from backend.utils.llm import call_llm
+
     prompt = build_answer_prompt(question, chunks)
 
     try:
-        answer_text = call_llm(prompt)
-
-        # Validate citations
+        answer_text = call_llm(prompt, provider, api_key, model, max_tokens=2048)
         answer_text = validate_citations(answer_text, valid_files)
-
         return answer_text
-
     except Exception as e:
         print(f"  [ERROR] Answer generation failed: {e}")
         return f"Error generating answer: {e}"
 
-
-# ── Main Phase 6 entry point ────────────────────────────────────
 
 def generate(
     question:     str,
@@ -264,6 +175,9 @@ def generate(
     repo_url:     str,
     all_chunks:   List[Dict],
     valid_files:  List[str],
+    provider:     str,
+    api_key:      str,
+    model:        str,
     retrieve_fn,
     rerank_fn
 ) -> Dict:
@@ -271,23 +185,23 @@ def generate(
     Main Phase 6 entry point.
 
     Args:
-        question:     Original user question
+        question:     User question
         final_chunks: Chunks from Phase 5
-        repo_url:     GitHub URL (for re-retrieval)
-        all_chunks:   All cached chunks (for grep search)
-        valid_files:  List of all file paths (for citation validation)
-        retrieve_fn:  Phase 4 retrieve() function
-        rerank_fn:    Phase 5 rerank() function
-
-    Returns:
-        Structured dict: answer, sources, confidence
+        repo_url:     GitHub URL
+        all_chunks:   All cached chunks (for grep in sub-questions)
+        valid_files:  All file paths (for citation validation)
+        provider:     LLM provider
+        api_key:      User's decrypted LLM key
+        model:        LLM model name
+        retrieve_fn:  Phase 4 function
+        rerank_fn:    Phase 5 function
     """
     print(f"\n=== Phase 6: Answer Generation ===")
     print(f"Question: {question}")
     print(f"Input chunks: {len(final_chunks)}")
 
-    # ── Step 1: Out-of-scope check ───────────────────────────────
-    print("\n[1/5] Checking if question is in scope...")
+    # Step 1: Out-of-scope check
+    print("\n[1/5] Checking scope...")
     if is_out_of_scope(final_chunks):
         print(f"  [OUT OF SCOPE] Max similarity below {OUT_OF_SCOPE_THRESHOLD}")
         return {
@@ -297,60 +211,51 @@ def generate(
             "confidence": 0.0,
             "intent":     "out_of_scope"
         }
-    print(f"  ✓ In scope (max similarity: "
-          f"{max(c['similarity'] for c in final_chunks):.3f})")
+    print(f"  ✓ In scope (max similarity: {max(c['similarity'] for c in final_chunks):.3f})")
 
-    # ── Step 2: Query expansion ──────────────────────────────────
+    # Step 2: Query expansion
     print("\n[2/5] Expanding query...")
-    sub_questions = expand_query(question)
+    sub_questions = expand_query(question, provider, api_key, model)
     print(f"  ✓ Sub-questions:")
     for q in sub_questions:
         print(f"    • {q}")
 
-    # Re-retrieve for each sub-question and merge
-    expanded_chunks = list(final_chunks)   # start with Phase 5 chunks
+    expanded_chunks = list(final_chunks)
     seen_ids = {c["chunk_id"] for c in final_chunks}
 
     for sub_q in sub_questions:
         try:
             sub_retrieval = retrieve_fn(sub_q, repo_url, all_chunks)
             sub_reranked  = rerank_fn(sub_q, sub_retrieval["chunks"])
-
-            # Add new chunks not already in our set
             for chunk in sub_reranked["final_chunks"]:
                 if chunk["chunk_id"] not in seen_ids:
                     expanded_chunks.append(chunk)
                     seen_ids.add(chunk["chunk_id"])
-
-            time.sleep(1)   # small delay between Gemini calls
-
+            time.sleep(1)
         except Exception as e:
             print(f"  [WARN] Sub-question retrieval failed: {e}")
 
     print(f"  ✓ Expanded from {len(final_chunks)} → {len(expanded_chunks)} chunks")
 
-    # ── Step 3: Wide answer check ────────────────────────────────
+    # Step 3: Wide answer check
     print("\n[3/5] Checking answer breadth...")
     unique_files   = list(set(c["file"] for c in expanded_chunks))
     file_summaries = None
 
     if len(unique_files) >= WIDE_ANSWER_FILE_CAP:
-        print(f"  [WIDE] Answer spans {len(unique_files)} files — "
-              f"running two-pass summarization")
-        file_summaries = summarize_files(question, expanded_chunks)
+        print(f"  [WIDE] Answer spans {len(unique_files)} files — two-pass summarization")
+        file_summaries = summarize_files(question, expanded_chunks, provider, api_key, model)
         print(f"  ✓ File summaries generated")
     else:
         print(f"  ✓ Answer spans {len(unique_files)} files — single pass")
 
-    # ── Step 4: Generate answer ──────────────────────────────────
+    # Step 4: Generate answer
     print("\n[4/5] Generating answer...")
-    answer_text = generate_answer(question, expanded_chunks, valid_files)
+    answer_text = generate_answer(question, expanded_chunks, valid_files, provider, api_key, model)
     print(f"  ✓ Answer generated ({len(answer_text)} chars)")
 
-    # ── Step 5: Build structured response ───────────────────────
+    # Step 5: Build response
     print("\n[5/5] Building structured response...")
-
-    # Extract sources from chunks used
     sources = [
         {
             "file":    chunk["file"],
