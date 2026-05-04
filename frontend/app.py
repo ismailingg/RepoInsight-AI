@@ -311,7 +311,7 @@ def show_settings():
             label_visibility="collapsed", key="lp")
 
         lm_models = {
-            "openrouter": ["google/gemini-2.5-flash:free", "meta-llama/llama-3.3-70b-instruct:free", "Enter your model name"],
+            "openrouter": ["google/gemini-2.5-flash", "meta-llama/llama-3.3-70b-instruct:free", "Enter your model name"],
             "groq":       ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "Enter your model name"],
             "openai":     ["gpt-4o-mini", "gpt-4o", "Enter your model name"],
             "anthropic":  ["claude-haiku-4-5", "claude-sonnet-4-5", "Enter your model name"]
