@@ -90,6 +90,41 @@ for k, v in defaults.items():
         st.session_state[k] = v
 
 
+# ── Token persistence via query params ───────────────────────────
+def save_token_to_url(token: str, email: str):
+    """Persist token in URL — survives page refresh."""
+    st.query_params["t"] = token
+    st.query_params["e"] = email
+
+
+def clear_token_from_url():
+    """Remove token from URL on logout."""
+    st.query_params.clear()
+
+
+# ── Restore session from URL on page refresh ─────────────────────
+if not st.session_state.token:
+    saved_token = st.query_params.get("t")
+    saved_email = st.query_params.get("e")
+    if saved_token and saved_email:
+        try:
+            r = requests.get(
+                f"{API_BASE}/auth/me",
+                headers={"Authorization": f"Bearer {saved_token}"},
+                timeout=5
+            )
+            if r.status_code == 200:
+                st.session_state.token      = saved_token
+                st.session_state.user_email = saved_email
+                st.session_state.page       = "ingest"
+            else:
+                # Token expired — clear URL
+                clear_token_from_url()
+        except Exception:
+            clear_token_from_url()
+
+
+# ── API helper ───────────────────────────────────────────────────
 def api(method, path, **kwargs):
     headers = kwargs.pop("headers", {})
     if st.session_state.token:
@@ -122,6 +157,9 @@ def save_message(repo_url, message):
     api("POST", "/repos/chat/append", json={"repo_url": repo_url, "message": message})
 
 
+# ══════════════════════════════════════════════════════════════════
+# PAGE: LOGIN / REGISTER
+# ══════════════════════════════════════════════════════════════════
 def show_login():
     _, col, _ = st.columns([1, 2, 1])
     with col:
@@ -150,9 +188,10 @@ def show_login():
                     r = requests.post(f"{API_BASE}/auth/login", json={"email": email, "password": password})
                     if r.status_code == 200:
                         d = r.json()
-                        st.session_state.token = d["token"]
+                        st.session_state.token      = d["token"]
                         st.session_state.user_email = d["email"]
-                        st.session_state.page = "ingest"
+                        st.session_state.page       = "ingest"
+                        save_token_to_url(d["token"], d["email"])
                         load_repos()
                         st.rerun()
                     else:
@@ -170,9 +209,10 @@ def show_login():
                     r = requests.post(f"{API_BASE}/auth/register", json={"email": reg_email, "password": reg_pass})
                     if r.status_code == 200:
                         d = r.json()
-                        st.session_state.token = d["token"]
+                        st.session_state.token      = d["token"]
                         st.session_state.user_email = d["email"]
-                        st.session_state.page = "settings"
+                        st.session_state.page       = "settings"
+                        save_token_to_url(d["token"], d["email"])
                         st.rerun()
                     else:
                         st.error(r.json().get("detail", "Registration failed"))
@@ -180,6 +220,9 @@ def show_login():
                     st.error("Email and password required")
 
 
+# ══════════════════════════════════════════════════════════════════
+# SIDEBAR
+# ══════════════════════════════════════════════════════════════════
 def show_sidebar():
     with st.sidebar:
         st.markdown("""
@@ -235,11 +278,15 @@ def show_sidebar():
 
         st.divider()
         if st.button("LOGOUT", type="secondary", use_container_width=True):
+            clear_token_from_url()
             for k, v in defaults.items():
                 st.session_state[k] = v
             st.rerun()
 
 
+# ══════════════════════════════════════════════════════════════════
+# PAGE: SETTINGS
+# ══════════════════════════════════════════════════════════════════
 def show_settings():
     st.markdown("""
     <div style='padding:40px 0 36px 0;border-bottom:1px solid #111;margin-bottom:40px;'>
@@ -263,17 +310,17 @@ def show_settings():
 
     with left:
         st.markdown('<div style="font-size:9px;color:#ff5000;letter-spacing:0.18em;text-transform:uppercase;font-family:Space Mono,monospace;margin-bottom:16px;">Embedding Provider</div>', unsafe_allow_html=True)
-        ep = st.selectbox("EP", ["google","openai"],
-            format_func=lambda x:{"google":"Google (free tier)","openai":"OpenAI (paid)"}[x],
+        ep = st.selectbox("EP", ["google", "openai"],
+            format_func=lambda x: {"google": "Google (free tier)", "openai": "OpenAI (paid)"}[x],
             label_visibility="collapsed", key="ep")
 
         em_models = {
-            "google": ["models/gemini-embedding-001", "models/gemini-embedding-2", "Enter your model name"],
-            "openai": ["text-embedding-3-small", "text-embedding-3-large", "Enter your model name"]
+            "google": ["models/gemini-embedding-001", "models/gemini-embedding-2", "Enter a model name"],
+            "openai": ["text-embedding-3-small", "text-embedding-3-large", "Enter a model name"]
         }
         em_selected = st.selectbox("EM", em_models[ep], label_visibility="collapsed", key="em")
 
-        if em_selected == "Enter your model name":
+        if em_selected == "Enter a model name":
             em = st.text_input(
                 "Custom embedding model name",
                 placeholder="e.g. models/gemini-embedding-3",
@@ -298,7 +345,7 @@ def show_settings():
             elif not em:
                 st.error("Enter a model name")
             else:
-                r = api("POST", "/keys/", json={"provider":ep,"key_type":"embedding","api_key":ek,"model_name":em})
+                r = api("POST", "/keys/", json={"provider": ep, "key_type": "embedding", "api_key": ek, "model_name": em})
                 if r and r.status_code == 201:
                     st.success(f"✓ {ep} embedding key saved"); st.rerun()
                 else:
@@ -306,21 +353,21 @@ def show_settings():
 
     with right:
         st.markdown('<div style="font-size:9px;color:#ff5000;letter-spacing:0.18em;text-transform:uppercase;font-family:Space Mono,monospace;margin-bottom:16px;">LLM Provider</div>', unsafe_allow_html=True)
-        lp = st.selectbox("LP", ["openrouter","groq","openai","anthropic"],
-            format_func=lambda x:{"openrouter":"OpenRouter (free models)","groq":"Groq (free, fast)","openai":"OpenAI (paid)","anthropic":"Anthropic (paid)"}[x],
+        lp = st.selectbox("LP", ["openrouter", "groq", "openai", "anthropic"],
+            format_func=lambda x: {"openrouter": "OpenRouter (free models)", "groq": "Groq (free, fast)", "openai": "OpenAI (paid)", "anthropic": "Anthropic (paid)"}[x],
             label_visibility="collapsed", key="lp")
 
         lm_models = {
-            "openrouter": ["google/gemini-2.5-flash", "meta-llama/llama-3.3-70b-instruct:free", "Enter your model name"],
-            "groq":       ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "Enter your model name"],
-            "openai":     ["gpt-4o-mini", "gpt-4o", "Enter your model name"],
-            "anthropic":  ["claude-haiku-4-5", "claude-sonnet-4-5", "Enter your model name"]
+            "openrouter": ["google/gemini-2.5-flash:free", "meta-llama/llama-3.3-70b-instruct:free", "Enter a model name"],
+            "groq":       ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "Enter a model name"],
+            "openai":     ["gpt-4o-mini", "gpt-4o", "Enter a model name"],
+            "anthropic":  ["claude-haiku-4-5", "claude-sonnet-4-5", "Enter a model name"]
         }
         lm_selected = st.selectbox("LM", lm_models[lp], label_visibility="collapsed", key="lm")
 
-        if lm_selected == "Enter your model name":
+        if lm_selected == "Enter a model name":
             lm = st.text_input(
-                "Enter your model name",
+                "Custom model name",
                 placeholder="e.g. anthropic/claude-opus-4",
                 key="lm_custom"
             )
@@ -343,7 +390,7 @@ def show_settings():
             elif not lm:
                 st.error("Enter a model name")
             else:
-                r = api("POST", "/keys/", json={"provider":lp,"key_type":"llm","api_key":lk,"model_name":lm})
+                r = api("POST", "/keys/", json={"provider": lp, "key_type": "llm", "api_key": lk, "model_name": lm})
                 if r and r.status_code == 201:
                     st.success(f"✓ {lp} LLM key saved"); st.rerun()
                 else:
@@ -363,6 +410,9 @@ def show_settings():
                 </div>""", unsafe_allow_html=True)
 
 
+# ══════════════════════════════════════════════════════════════════
+# PAGE: INGEST
+# ══════════════════════════════════════════════════════════════════
 def show_ingest():
     st.markdown("""
     <div style='padding:40px 0 36px 0;border-bottom:1px solid #111;margin-bottom:40px;'>
@@ -434,14 +484,23 @@ def show_ingest():
 
         while True:
             try:
-                status = requests.get(f"{API_BASE}/status/{job_id}").json()
+                resp = requests.get(f"{API_BASE}/status/{job_id}")
+                status = resp.json()
+                if resp.status_code == 404:
+                    st.error(f"Error: {status.get('detail')} — The server likely restarted and lost the job memory.")
+                    st.session_state.job_id = None
+                    break
             except:
                 st.error("Lost connection to API."); break
 
-            p_bar.progress(status["progress"] / 100)
-            m_line.markdown(f'<div style="font-family:Space Mono,monospace;font-size:10px;color:#333;margin-top:8px;">{status["message"]}</div>', unsafe_allow_html=True)
+            progress = status.get("progress", 0)
+            message  = status.get("message", "")
+            state    = status.get("status", "unknown")
 
-            if status["status"] == "complete":
+            p_bar.progress(progress / 100)
+            m_line.markdown(f'<div style="font-family:Space Mono,monospace;font-size:10px;color:#333;margin-top:8px;">{message}</div>', unsafe_allow_html=True)
+
+            if state == "complete":
                 result   = status.get("result", {})
                 repo_url = st.session_state.active_repo
                 st.session_state.job_id = None
@@ -459,13 +518,16 @@ def show_ingest():
                 m3.metric("Vectors", result.get("chunks_embedded",0))
                 st.markdown('<div style="margin-top:24px;font-family:Space Mono,monospace;font-size:11px;color:#333;border-left:2px solid #ff5000;padding-left:14px;">Switch to QUERY in the sidebar.</div>', unsafe_allow_html=True)
                 break
-            elif status["status"] == "failed":
+            elif state == "failed":
                 s_box.error(f"Failed: {status.get('error')}"); st.session_state.job_id = None; break
             else:
-                s_box.markdown(f'<div style="font-family:Space Mono,monospace;font-size:10px;color:#ff5000;">● {status["status"].upper()}</div>', unsafe_allow_html=True)
+                s_box.markdown(f'<div style="font-family:Space Mono,monospace;font-size:10px;color:#ff5000;">● {state.upper()}</div>', unsafe_allow_html=True)
                 time.sleep(3); st.rerun()
 
 
+# ══════════════════════════════════════════════════════════════════
+# PAGE: QUERY
+# ══════════════════════════════════════════════════════════════════
 def show_query():
     st.markdown("""
     <div style='padding:40px 0 36px 0;border-bottom:1px solid #111;margin-bottom:32px;'>
@@ -553,6 +615,9 @@ def show_query():
 if not st.session_state.token:
     show_login()
 else:
+    # Load repos if session was restored from URL but repos not yet loaded
+    if st.session_state.token and not st.session_state.repos:
+        load_repos()
     show_sidebar()
     page = st.session_state.page
     if page == "ingest":     show_ingest()
