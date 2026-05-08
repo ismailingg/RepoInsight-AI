@@ -14,23 +14,31 @@ st.set_page_config(
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&display=swap');
+
+/* ── Force dark mode regardless of browser theme ── */
+:root {
+    color-scheme: dark !important;
+}
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body, [data-testid="stAppViewContainer"] {
-    background-color: #0a0a0a !important; color: #e8e8e8 !important;
+html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
+    background-color: #0a0a0a !important;
+    color: #e8e8e8 !important;
     font-family: 'Space Mono', monospace !important;
+    color-scheme: dark !important;
 }
 [data-testid="stAppViewContainer"] {
     background: radial-gradient(ellipse 80% 50% at 20% 0%, rgba(255,80,0,0.06) 0%, transparent 60%),
         radial-gradient(ellipse 60% 40% at 80% 100%, rgba(255,200,0,0.04) 0%, transparent 60%), #0a0a0a !important;
 }
 [data-testid="stSidebar"] { background: #0f0f0f !important; border-right: 1px solid #1e1e1e !important; }
-[data-testid="stSidebar"] * { font-family: 'Space Mono', monospace !important; }
+[data-testid="stSidebar"] * { font-family: 'Space Mono', monospace !important; color-scheme: dark !important; }
 #MainMenu, footer, header, [data-testid="stToolbar"], [data-testid="stDecoration"] { display: none !important; }
 h1, h2, h3 { font-family: 'Syne', sans-serif !important; letter-spacing: -0.02em; }
 [data-testid="stTextInput"] input, [data-testid="stTextArea"] textarea {
     background: #111 !important; border: 1px solid #2a2a2a !important;
     border-radius: 0 !important; color: #e8e8e8 !important;
     font-family: 'Space Mono', monospace !important; font-size: 13px !important;
+    color-scheme: dark !important;
 }
 [data-testid="stTextInput"] input:focus, [data-testid="stTextArea"] textarea:focus {
     border-color: #ff5000 !important; box-shadow: 0 0 0 1px #ff5000 !important;
@@ -63,10 +71,16 @@ h1, h2, h3 { font-family: 'Syne', sans-serif !important; letter-spacing: -0.02em
 [data-testid="stExpander"] summary:hover { color: #ff5000 !important; }
 [data-testid="stChatMessage"] { background: transparent !important; border-bottom: 1px solid #0f0f0f !important; padding: 20px 0 !important; }
 [data-testid="stChatMessageContent"] p { font-family: 'Space Mono', monospace !important; font-size: 13px !important; line-height: 1.9 !important; color: #bbb !important; }
-[data-testid="stChatInput"] textarea { background: #111 !important; border: 1px solid #2a2a2a !important; border-radius: 0 !important; font-family: 'Space Mono', monospace !important; font-size: 13px !important; color: #e8e8e8 !important; }
+[data-testid="stChatInput"] textarea { background: #111 !important; border: 1px solid #2a2a2a !important; border-radius: 0 !important; font-family: 'Space Mono', monospace !important; font-size: 13px !important; color: #e8e8e8 !important; color-scheme: dark !important; }
 [data-testid="stChatInput"] textarea:focus { border-color: #ff5000 !important; }
 [data-testid="stChatInput"] button { background: #ff5000 !important; border-radius: 0 !important; }
 [data-testid="stRadio"] label { font-family: 'Space Mono', monospace !important; font-size: 11px !important; color: #aaa !important; letter-spacing: 0.1em !important; }
+[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+    background: #111 !important; border-color: #2a2a2a !important; color: #e8e8e8 !important; border-radius: 0 !important;
+}
+[data-baseweb="popover"] ul { background: #111 !important; }
+[data-baseweb="popover"] li { color: #e8e8e8 !important; }
+[data-baseweb="popover"] li:hover { background: #1e1e1e !important; }
 hr { border-color: #1a1a1a !important; }
 ::-webkit-scrollbar { width: 3px; height: 3px; }
 ::-webkit-scrollbar-track { background: #0a0a0a; }
@@ -75,6 +89,20 @@ hr { border-color: #1a1a1a !important; }
 div[data-baseweb="tab-list"] { background: transparent !important; border-bottom: 1px solid #1a1a1a !important; }
 div[data-baseweb="tab"] { font-family: 'Space Mono', monospace !important; font-size: 11px !important; color: #444 !important; letter-spacing: 0.1em !important; background: transparent !important; }
 div[data-baseweb="tab"][aria-selected="true"] { color: #ff5000 !important; border-bottom: 2px solid #ff5000 !important; }
+/* Light mode override — force dark everywhere */
+@media (prefers-color-scheme: light) {
+    html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"],
+    [data-testid="stSidebar"], [data-testid="stHeader"] {
+        background-color: #0a0a0a !important;
+        color: #e8e8e8 !important;
+    }
+    [data-testid="stTextInput"] input, [data-testid="stTextArea"] textarea,
+    [data-testid="stChatInput"] textarea {
+        background: #111 !important;
+        color: #e8e8e8 !important;
+        border-color: #2a2a2a !important;
+    }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -92,13 +120,11 @@ for k, v in defaults.items():
 
 # ── Token persistence via query params ───────────────────────────
 def save_token_to_url(token: str, email: str):
-    """Persist token in URL — survives page refresh."""
     st.query_params["t"] = token
     st.query_params["e"] = email
 
 
 def clear_token_from_url():
-    """Remove token from URL on logout."""
     st.query_params.clear()
 
 
@@ -118,7 +144,6 @@ if not st.session_state.token:
                 st.session_state.user_email = saved_email
                 st.session_state.page       = "ingest"
             else:
-                # Token expired — clear URL
                 clear_token_from_url()
         except Exception:
             clear_token_from_url()
@@ -157,6 +182,17 @@ def save_message(repo_url, message):
     api("POST", "/repos/chat/append", json={"repo_url": repo_url, "message": message})
 
 
+def get_saved_keys():
+    """Return dict of saved keys for current user, or empty dict on failure."""
+    resp = api("GET", "/keys/")
+    if resp and resp.status_code == 200:
+        existing = {}
+        for k in resp.json()["keys"]:
+            existing[f"{k['provider']}_{k['key_type']}"] = k.get("model_name", "")
+        return existing
+    return {}
+
+
 # ══════════════════════════════════════════════════════════════════
 # PAGE: LOGIN / REGISTER
 # ══════════════════════════════════════════════════════════════════
@@ -190,9 +226,16 @@ def show_login():
                         d = r.json()
                         st.session_state.token      = d["token"]
                         st.session_state.user_email = d["email"]
-                        st.session_state.page       = "ingest"
                         save_token_to_url(d["token"], d["email"])
                         load_repos()
+                        # Check if user has keys saved — if not, send to settings first
+                        keys = get_saved_keys()
+                        has_embedding = any("embedding" in k for k in keys)
+                        has_llm       = any("llm" in k for k in keys)
+                        if has_embedding and has_llm:
+                            st.session_state.page = "ingest"
+                        else:
+                            st.session_state.page = "settings"
                         st.rerun()
                     else:
                         st.error(r.json().get("detail", "Login failed"))
@@ -211,7 +254,7 @@ def show_login():
                         d = r.json()
                         st.session_state.token      = d["token"]
                         st.session_state.user_email = d["email"]
-                        st.session_state.page       = "settings"
+                        st.session_state.page       = "settings"   # always send new users to settings
                         save_token_to_url(d["token"], d["email"])
                         st.rerun()
                     else:
@@ -305,6 +348,71 @@ def show_settings():
     if resp and resp.status_code == 200:
         for k in resp.json()["keys"]:
             existing[f"{k['provider']}_{k['key_type']}"] = k.get("model_name", "")
+
+    has_embedding = any("embedding" in k for k in existing)
+    has_llm       = any("llm" in k for k in existing)
+
+    # ── Setup banner for new users ───────────────────────────────
+    if not has_embedding or not has_llm:
+        missing = []
+        if not has_embedding: missing.append("embedding")
+        if not has_llm:       missing.append("LLM")
+        st.markdown(f"""
+        <div style='border:1px solid #2a1a00;border-left:3px solid #ff5000;background:#110900;
+                    padding:20px 24px;margin-bottom:32px;'>
+            <div style='font-size:11px;color:#ff5000;font-family:Syne,sans-serif;font-weight:700;
+                        letter-spacing:0.08em;text-transform:uppercase;margin-bottom:10px;'>
+                ⚠ Setup required — missing: {" + ".join(missing)} key{"s" if len(missing)>1 else ""}
+            </div>
+            <div style='font-size:11px;color:#888;font-family:Space Mono,monospace;line-height:1.9;'>
+                You need both an <span style='color:#e8e8e8;'>embedding key</span> and an
+                <span style='color:#e8e8e8;'>LLM key</span> before you can index or query a repo.<br>
+                Save both below, then head to <span style='color:#ff5000;'>▸ INGEST</span> in the sidebar.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ── Free key guide ───────────────────────────────────────────
+    with st.expander("🆓  Get free API keys — no credit card needed"):
+        st.markdown("""
+        <div style='font-family:Space Mono,monospace;font-size:11px;color:#888;line-height:2.2;padding:4px 0;'>
+
+        <div style='color:#ff5000;font-size:9px;letter-spacing:0.18em;text-transform:uppercase;
+                    margin-bottom:10px;'>Embedding key (Google — free tier)</div>
+        <div style='color:#aaa;margin-bottom:4px;'>
+            1. Go to <span style='color:#ff5000;'>aistudio.google.com/app/apikey</span><br>
+            2. Sign in with your Google account<br>
+            3. Click <span style='color:#e8e8e8;'>Create API Key</span><br>
+            4. Copy the key and paste it below under <span style='color:#e8e8e8;'>Embedding Provider → Google</span><br>
+            <span style='color:#555;'>Free tier: 1,500 requests/day · no credit card required</span>
+        </div>
+
+        <div style='border-top:1px solid #1a1a1a;margin:16px 0;'></div>
+
+        <div style='color:#ff5000;font-size:9px;letter-spacing:0.18em;text-transform:uppercase;
+                    margin-bottom:10px;'>LLM key — pick one (both free)</div>
+
+        <div style='color:#e8e8e8;margin-bottom:2px;'>Option A — Groq (fastest, recommended)</div>
+        <div style='color:#aaa;margin-bottom:12px;'>
+            1. Go to <span style='color:#ff5000;'>console.groq.com</span><br>
+            2. Sign up → Dashboard → API Keys → Create API Key<br>
+            3. Paste below under <span style='color:#e8e8e8;'>LLM Provider → Groq</span><br>
+            <span style='color:#555;'>Free tier: 30 req/min on Llama 3.3 70B · no credit card</span>
+        </div>
+
+        <div style='color:#e8e8e8;margin-bottom:2px;'>Option B — OpenRouter (more model choices)</div>
+        <div style='color:#aaa;'>
+            1. Go to <span style='color:#ff5000;'>openrouter.ai</span> → Sign up<br>
+            2. Keys → Create Key<br>
+            3. Paste below under <span style='color:#e8e8e8;'>LLM Provider → OpenRouter</span><br>
+            4. Use model <span style='color:#e8e8e8;'>google/gemini-2.5-flash:free</span> (already in the dropdown)<br>
+            <span style='color:#555;'>Free models available · no credit card required for free tier</span>
+        </div>
+
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
     left, right = st.columns(2, gap="large")
 
@@ -409,6 +517,18 @@ def show_settings():
                     <div style='font-size:10px;color:#666;margin-top:4px;font-family:Space Mono,monospace;'>{key_type} / {model or 'default'}</div>
                 </div>""", unsafe_allow_html=True)
 
+        # Show "ready" callout once both keys are saved
+        if has_embedding and has_llm:
+            st.markdown("""
+            <div style='border:1px solid #0a2a00;border-left:3px solid #00cc44;background:#050f00;
+                        padding:16px 20px;margin-top:24px;'>
+                <div style='font-size:11px;color:#00cc44;font-family:Space Mono,monospace;'>
+                    ✓ Both keys saved — you're ready to ingest a repo.<br>
+                    <span style='color:#555;'>Head to <span style='color:#e8e8e8;'>▸ INGEST</span> in the sidebar.</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
 
 # ══════════════════════════════════════════════════════════════════
 # PAGE: INGEST
@@ -421,6 +541,30 @@ def show_ingest():
         <div style='font-size:12px;color:#666;font-family:Space Mono,monospace;max-width:480px;line-height:1.8;'>Clone → parse → chunk → embed → store.<br>Ask questions in minutes.</div>
     </div>
     """, unsafe_allow_html=True)
+
+    # ── Missing keys warning banner ──────────────────────────────
+    existing     = get_saved_keys()
+    has_embedding = any("embedding" in k for k in existing)
+    has_llm       = any("llm" in k for k in existing)
+
+    if not has_embedding or not has_llm:
+        missing = []
+        if not has_embedding: missing.append("embedding")
+        if not has_llm:       missing.append("LLM")
+        st.markdown(f"""
+        <div style='border:1px solid #2a1a00;border-left:3px solid #ff5000;background:#110900;
+                    padding:20px 24px;margin-bottom:32px;'>
+            <div style='font-size:11px;color:#ff5000;font-family:Syne,sans-serif;font-weight:700;
+                        letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;'>
+                ⚠ API keys required before ingestion
+            </div>
+            <div style='font-size:11px;color:#888;font-family:Space Mono,monospace;line-height:1.9;'>
+                Missing: <span style='color:#e8e8e8;'>{" + ".join(missing)} key{"s" if len(missing)>1 else ""}</span><br>
+                Go to <span style='color:#ff5000;'>⚙ SETTINGS</span> in the sidebar to add your API keys.<br>
+                <span style='color:#555;'>Need free keys? The Settings page has step-by-step instructions.</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
     left, right = st.columns([3, 2], gap="large")
 
@@ -439,6 +583,13 @@ def show_ingest():
         if st.button("START INGESTION →", type="primary", use_container_width=True):
             if not github_url.strip():
                 st.error("GitHub URL required.")
+            elif not has_embedding or not has_llm:
+                # Proactive client-side check before even calling the API
+                missing = []
+                if not has_embedding: missing.append("embedding")
+                if not has_llm:       missing.append("LLM")
+                st.error(f"Cannot ingest — missing {' and '.join(missing)} API key{'s' if len(missing)>1 else ''}.")
+                st.info("Go to ⚙ SETTINGS in the sidebar to add your keys. Free options are available.")
             else:
                 resp = api("POST", "/ingest", json={
                     "github_url": github_url.strip(), "token": token or None,
@@ -454,8 +605,10 @@ def show_ingest():
                             "vectors":0,"ingested_at":None,"chat_history":[]
                         }
                 elif resp and resp.status_code == 400:
-                    st.error(resp.json().get("detail","Error"))
-                    st.info("Go to ⚙ SETTINGS to save your API keys first.")
+                    detail = resp.json().get("detail", "Error")
+                    st.error(detail)
+                    if "key" in detail.lower() or "embedding" in detail.lower():
+                        st.info("Go to ⚙ SETTINGS in the sidebar to save your API keys. Free options are available — check the Settings page for a step-by-step guide.")
 
     with right:
         st.markdown("""
@@ -484,7 +637,7 @@ def show_ingest():
 
         while True:
             try:
-                resp = requests.get(f"{API_BASE}/status/{job_id}")
+                resp   = requests.get(f"{API_BASE}/status/{job_id}")
                 status = resp.json()
                 if resp.status_code == 404:
                     st.error(f"Error: {status.get('detail')} — The server likely restarted and lost the job memory.")
@@ -519,7 +672,12 @@ def show_ingest():
                 st.markdown('<div style="margin-top:24px;font-family:Space Mono,monospace;font-size:11px;color:#333;border-left:2px solid #ff5000;padding-left:14px;">Switch to QUERY in the sidebar.</div>', unsafe_allow_html=True)
                 break
             elif state == "failed":
-                s_box.error(f"Failed: {status.get('error')}"); st.session_state.job_id = None; break
+                error_msg = status.get("error", "Unknown error")
+                s_box.error(f"Failed: {error_msg}")
+                if "key" in error_msg.lower() or "embedding" in error_msg.lower() or "api" in error_msg.lower():
+                    st.info("This looks like an API key issue. Go to ⚙ SETTINGS to verify your keys are correct.")
+                st.session_state.job_id = None
+                break
             else:
                 s_box.markdown(f'<div style="font-family:Space Mono,monospace;font-size:10px;color:#ff5000;">● {state.upper()}</div>', unsafe_allow_html=True)
                 time.sleep(3); st.rerun()
@@ -615,7 +773,6 @@ def show_query():
 if not st.session_state.token:
     show_login()
 else:
-    # Load repos if session was restored from URL but repos not yet loaded
     if st.session_state.token and not st.session_state.repos:
         load_repos()
     show_sidebar()
