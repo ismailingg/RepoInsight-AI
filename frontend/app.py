@@ -112,7 +112,6 @@ defaults = {
     "token": None, "user_email": None,
     "page": "login", "active_repo": None,
     "repos": {}, "job_id": None,
-    "reg_sent": False, "reg_email": "",
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -156,19 +155,16 @@ if not st.session_state.token:
     if verify_token:
         try:
             r = requests.get(f"{API_BASE}/auth/verify", params={"token": verify_token}, timeout=10)
+            st.query_params.clear()
             if r.status_code == 200:
                 d = r.json()
                 st.session_state.token      = d["token"]
                 st.session_state.user_email = d["email"]
                 st.session_state.page       = "settings"
-                # Replace ?verify=... with normal session params
-                st.query_params.clear()
                 save_token_to_url(d["token"], d["email"])
-                st.success("✓ Email verified! Welcome to RepoInsight.")
+                st.success("✓ Email verified! Welcome to RepoInsight. Add your API keys below.")
             else:
-                detail = r.json().get("detail", "Verification failed")
-                st.query_params.clear()
-                st.error(f"Verification failed: {detail}")
+                st.error(r.json().get("detail", "Verification failed. Try registering again."))
         except Exception as e:
             st.error(f"Could not reach server: {e}")
 
@@ -252,6 +248,7 @@ def show_login():
                         st.session_state.user_email = d["email"]
                         save_token_to_url(d["token"], d["email"])
                         load_repos()
+                        # Check if user has keys saved — if not, send to settings first
                         keys = get_saved_keys()
                         has_embedding = any("embedding" in k for k in keys)
                         has_llm       = any("llm" in k for k in keys)
@@ -265,17 +262,15 @@ def show_login():
                         <div style='border:1px solid #2a1a00;border-left:3px solid #ff5000;
                                     background:#110900;padding:16px 20px;margin-top:8px;'>
                             <div style='font-size:11px;color:#ff5000;font-family:Space Mono,monospace;
-                                        font-weight:700;margin-bottom:6px;'>
-                                ✉ Email not verified
-                            </div>
+                                        font-weight:700;margin-bottom:6px;'>✉ Email not verified</div>
                             <div style='font-size:11px;color:#888;font-family:Space Mono,monospace;
                                         line-height:1.9;'>
                                 Check your inbox for the verification link.<br>
-                                To get a new link, re-enter your details and click Resend below.
+                                Didn't get it? Enter your details and click Resend.
                             </div>
                         </div>
                         """, unsafe_allow_html=True)
-                        if st.button("Resend verification email", type="secondary", use_container_width=True):
+                        if st.button("Resend verification email", type="secondary", use_container_width=True, key="resend_btn"):
                             resend = requests.post(
                                 f"{API_BASE}/auth/resend-verification",
                                 json={"email": email, "password": password}
@@ -291,18 +286,39 @@ def show_login():
 
         with tab2:
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+            # ── Show inbox prompt after successful registration ───────
+            if st.session_state.get("pending_verify_email"):
+                pv_email = st.session_state["pending_verify_email"]
+                st.markdown(f"""
+                <div style='border:1px solid #0a2a00;border-left:3px solid #00cc44;
+                            background:#050f00;padding:20px 24px;margin-bottom:16px;'>
+                    <div style='font-size:11px;color:#00cc44;font-family:Space Mono,monospace;
+                                font-weight:700;letter-spacing:0.08em;text-transform:uppercase;
+                                margin-bottom:8px;'>✓ Check your inbox</div>
+                    <div style='font-size:11px;color:#888;font-family:Space Mono,monospace;
+                                line-height:1.9;'>
+                        A verification link was sent to<br>
+                        <span style='color:#e8e8e8;'>{pv_email}</span><br><br>
+                        Click the link to activate your account,<br>
+                        then log in using the LOGIN tab.
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                if st.button("← Use a different email", type="secondary", use_container_width=True):
+                    del st.session_state["pending_verify_email"]
+                    st.rerun()
+                st.stop()
+
             reg_email = st.text_input("EMAIL", placeholder="you@example.com", key="reg_email")
             reg_pass  = st.text_input("PASSWORD", type="password", placeholder="min 8 characters", key="reg_pass")
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
             if st.button("CREATE ACCOUNT →", type="primary", use_container_width=True, key="do_reg"):
                 if reg_email and reg_pass:
                     r = requests.post(f"{API_BASE}/auth/register", json={"email": reg_email, "password": reg_pass})
-                    if r.status_code == 200:
-                        d = r.json()
-                        st.session_state.token      = d["token"]
-                        st.session_state.user_email = d["email"]
-                        st.session_state.page       = "settings"   # always send new users to settings
-                        save_token_to_url(d["token"], d["email"])
+                    if r.status_code in (200, 201):
+                        # Don't log in yet — show "check your inbox" message
+                        st.session_state["pending_verify_email"] = reg_email
                         st.rerun()
                     else:
                         st.error(r.json().get("detail", "Registration failed"))
