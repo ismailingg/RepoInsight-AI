@@ -142,7 +142,8 @@ def retrieve(
     provider:   str,
     api_key:    str,
     model:      str  = None,
-    repo_path:  str  = None
+    repo_path:  str  = None,
+    user_id:    str  = ""
 ) -> Dict:
     """
     Main Phase 4 entry point.
@@ -155,6 +156,7 @@ def retrieve(
         api_key:    User's decrypted embedding API key
         model:      Embedding model name
         repo_path:  Path to cloned repo (for stale validation)
+        user_id:    User ID for per-user collection isolation
     """
     from backend.utils.embedding import DEFAULT_EMBEDDING_MODELS
     model = model or DEFAULT_EMBEDDING_MODELS.get(provider, "models/gemini-embedding-001")
@@ -162,7 +164,8 @@ def retrieve(
     print(f"\n=== Phase 4: Hybrid Retrieval ===")
     print(f"Question: {question}")
 
-    repo_hash  = hashlib.md5(repo_url.encode()).hexdigest()[:16]
+    combined   = f"{user_id}:{repo_url}"
+    repo_hash  = hashlib.md5(combined.encode()).hexdigest()[:16]
     collection = chroma_client.get_collection(f"repo_{repo_hash}")
 
     # Semantic search

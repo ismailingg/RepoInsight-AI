@@ -98,7 +98,8 @@ def run_ingestion(
             repo_url = github_url,
             provider = user_keys.get("embedding_provider", "google"),
             api_key  = user_keys.get("embedding_key", ""),
-            model    = user_keys.get("embedding_model")
+            model    = user_keys.get("embedding_model"),
+            user_id  = user_id
         )
 
         # Save chunk cache for grep search

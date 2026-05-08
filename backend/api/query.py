@@ -97,7 +97,8 @@ def query_repo(
         all_chunks = all_chunks,
         provider   = user_keys.get("embedding_provider", "google"),
         api_key    = user_keys.get("embedding_key", ""),
-        model      = user_keys.get("embedding_model")
+        model      = user_keys.get("embedding_model"),
+        user_id    = str(current_user.id)
     )
 
     # Phase 5: Re-rank
@@ -123,7 +124,8 @@ def query_repo(
             q, url, chunks,
             provider = user_keys.get("embedding_provider", "google"),
             api_key  = user_keys.get("embedding_key", ""),
-            model    = user_keys.get("embedding_model")
+            model    = user_keys.get("embedding_model"),
+            user_id    = str(current_user.id)
         ),
         rerank_fn = lambda q, chunks: rerank(
             q, chunks,

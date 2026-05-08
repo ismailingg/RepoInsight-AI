@@ -93,12 +93,10 @@ def embed_batch(chunks: List[Dict], provider: str, api_key: str, model: str) -> 
     return embeddings
 
 
-def get_or_create_collection(repo_url: str):
-    repo_hash = hashlib.md5(repo_url.encode()).hexdigest()[:16]
-    return chroma_client.get_or_create_collection(
-        name     = f"repo_{repo_hash}",
-        metadata = {"repo_url": repo_url}
-    )
+def get_or_create_collection(repo_url: str, user_id: str = ""):
+    combined = f"{user_id}:{repo_url}"
+    repo_hash = hashlib.md5(combined.encode()).hexdigest()[:16]
+    collection_name = f"repo_{repo_hash}"
 
 
 def store_embeddings(collection, chunks: List[Dict], embeddings: List[List[float]]):
@@ -121,7 +119,8 @@ def embed_and_store(
     repo_url: str,
     provider: str,
     api_key:  str,
-    model:    str = None
+    model:    str = None,
+    user_id=""
 ) -> Dict:
     from backend.utils.embedding import DEFAULT_EMBEDDING_MODELS
     model = model or DEFAULT_EMBEDDING_MODELS.get(provider, "models/gemini-embedding-001")
@@ -148,7 +147,7 @@ def embed_and_store(
         return {"total_chunks": len(chunks), "unique_chunks": len(chunks)-num_duplicates, "embedded": 0}
 
     print("\n[3/4] Preparing ChromaDB collection...")
-    collection = get_or_create_collection(repo_url)
+    collection = get_or_create_collection(repo_url, user_id)
     print(f"  ✓ Collection: {collection.name}")
 
     total_batches  = (len(unique_chunks) + EMBEDDING_BATCH_SIZE - 1) // EMBEDDING_BATCH_SIZE
