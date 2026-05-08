@@ -112,6 +112,7 @@ defaults = {
     "token": None, "user_email": None,
     "page": "login", "active_repo": None,
     "repos": {}, "job_id": None,
+    "reg_sent": False, "reg_email": "",
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -147,6 +148,29 @@ if not st.session_state.token:
                 clear_token_from_url()
         except Exception:
             clear_token_from_url()
+
+
+# ── Email verification from URL (?verify=token) ─────────────────
+if not st.session_state.token:
+    verify_token = st.query_params.get("verify")
+    if verify_token:
+        try:
+            r = requests.get(f"{API_BASE}/auth/verify", params={"token": verify_token}, timeout=10)
+            if r.status_code == 200:
+                d = r.json()
+                st.session_state.token      = d["token"]
+                st.session_state.user_email = d["email"]
+                st.session_state.page       = "settings"
+                # Replace ?verify=... with normal session params
+                st.query_params.clear()
+                save_token_to_url(d["token"], d["email"])
+                st.success("✓ Email verified! Welcome to RepoInsight.")
+            else:
+                detail = r.json().get("detail", "Verification failed")
+                st.query_params.clear()
+                st.error(f"Verification failed: {detail}")
+        except Exception as e:
+            st.error(f"Could not reach server: {e}")
 
 
 # ── API helper ───────────────────────────────────────────────────
@@ -228,7 +252,6 @@ def show_login():
                         st.session_state.user_email = d["email"]
                         save_token_to_url(d["token"], d["email"])
                         load_repos()
-                        # Check if user has keys saved — if not, send to settings first
                         keys = get_saved_keys()
                         has_embedding = any("embedding" in k for k in keys)
                         has_llm       = any("llm" in k for k in keys)
@@ -237,6 +260,30 @@ def show_login():
                         else:
                             st.session_state.page = "settings"
                         st.rerun()
+                    elif r.status_code == 403 and r.json().get("detail") == "EMAIL_NOT_VERIFIED":
+                        st.markdown("""
+                        <div style='border:1px solid #2a1a00;border-left:3px solid #ff5000;
+                                    background:#110900;padding:16px 20px;margin-top:8px;'>
+                            <div style='font-size:11px;color:#ff5000;font-family:Space Mono,monospace;
+                                        font-weight:700;margin-bottom:6px;'>
+                                ✉ Email not verified
+                            </div>
+                            <div style='font-size:11px;color:#888;font-family:Space Mono,monospace;
+                                        line-height:1.9;'>
+                                Check your inbox for the verification link.<br>
+                                To get a new link, re-enter your details and click Resend below.
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        if st.button("Resend verification email", type="secondary", use_container_width=True):
+                            resend = requests.post(
+                                f"{API_BASE}/auth/resend-verification",
+                                json={"email": email, "password": password}
+                            )
+                            if resend.status_code == 200:
+                                st.success("Verification email resent. Check your inbox.")
+                            else:
+                                st.error(resend.json().get("detail", "Could not resend"))
                     else:
                         st.error(r.json().get("detail", "Login failed"))
                 else:

@@ -12,36 +12,27 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-SECRET_KEY      = os.getenv("SECRET_KEY", "changeme")
-ALGORITHM       = "HS256"
+SECRET_KEY        = os.getenv("SECRET_KEY", "changeme")
+ALGORITHM         = "HS256"
 TOKEN_EXPIRE_DAYS = 7
 
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-# Bearer token extractor
+pwd_context   = CryptContext(schemes=["bcrypt"], deprecated="auto")
 bearer_scheme = HTTPBearer()
 
 
 # ── Password helpers ────────────────────────────────────────────
 
 def hash_password(password: str) -> str:
-    """Hash a plaintext password using bcrypt."""
     return pwd_context.hash(password)
 
 
 def verify_password(plaintext: str, hashed: str) -> bool:
-    """Check plaintext password against bcrypt hash."""
     return pwd_context.verify(plaintext, hashed)
 
 
 # ── JWT helpers ─────────────────────────────────────────────────
 
 def create_token(user_id: str) -> str:
-    """
-    Create a JWT token for a user.
-    Expires after TOKEN_EXPIRE_DAYS days.
-    """
     payload = {
         "sub": user_id,
         "exp": datetime.utcnow() + timedelta(days=TOKEN_EXPIRE_DAYS)
@@ -50,10 +41,6 @@ def create_token(user_id: str) -> str:
 
 
 def decode_token(token: str) -> Optional[str]:
-    """
-    Decode a JWT token and return the user_id (sub claim).
-    Returns None if token is invalid or expired.
-    """
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload.get("sub")
@@ -68,12 +55,8 @@ def get_current_user(
     db: Session = Depends(get_db)
 ) -> User:
     """
-    FastAPI dependency — validates JWT and returns the current User object.
-
-    Usage in any protected endpoint:
-        @router.post("/something")
-        def my_endpoint(current_user: User = Depends(get_current_user)):
-            ...
+    Validates JWT, checks the user exists, and checks email is verified.
+    Used as a Depends() on every protected endpoint.
     """
     token   = credentials.credentials
     user_id = decode_token(token)
@@ -92,6 +75,12 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
             headers={"WWW-Authenticate": "Bearer"}
+        )
+
+    if not user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="EMAIL_NOT_VERIFIED"
         )
 
     return user

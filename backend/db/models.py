@@ -13,13 +13,17 @@ class User(Base):
     """
     Stores registered users.
     Password is always stored as bcrypt hash — never plaintext.
+    Email must be verified before the user can log in.
     """
     __tablename__ = "users"
 
-    id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email         = Column(String(255), unique=True, nullable=False, index=True)
-    password_hash = Column(String(255), nullable=False)
-    created_at    = Column(DateTime, default=datetime.utcnow)
+    id                 = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email              = Column(String(255), unique=True, nullable=False, index=True)
+    password_hash      = Column(String(255), nullable=False)
+    is_verified        = Column(Boolean, default=False, nullable=False)
+    verification_token = Column(String(64), nullable=True, index=True)
+    token_expires_at   = Column(DateTime, nullable=True)
+    created_at         = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
     api_keys      = relationship("ApiKey",      back_populates="user", cascade="all, delete-orphan")
@@ -42,19 +46,17 @@ class ApiKey(Base):
 
     id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id       = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    provider      = Column(String(50),  nullable=False)   # google / openai / groq / openrouter / anthropic
-    key_type      = Column(String(50),  nullable=False)   # embedding / llm
-    encrypted_key = Column(Text,        nullable=False)   # AES encrypted
-    model_name    = Column(String(100), nullable=True)    # which model they selected
+    provider      = Column(String(50),  nullable=False)
+    key_type      = Column(String(50),  nullable=False)
+    encrypted_key = Column(Text,        nullable=False)
+    model_name    = Column(String(100), nullable=True)
     created_at    = Column(DateTime, default=datetime.utcnow)
     updated_at    = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Each user can only have one key per provider per type
     __table_args__ = (
         UniqueConstraint("user_id", "provider", "key_type", name="uq_user_provider_keytype"),
     )
 
-    # Relationships
     user = relationship("User", back_populates="api_keys")
 
     def __repr__(self):
@@ -64,33 +66,27 @@ class ApiKey(Base):
 class RepoSession(Base):
     """
     Stores each user's indexed repositories and their chat history.
-    
-    - One row per (user, repo) pair
-    - chat_history is a JSONB array of {role, content, sources, confidence, intent}
-    - collection_name is the ChromaDB collection for this repo
     """
     __tablename__ = "repo_sessions"
 
     id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id         = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     repo_url        = Column(String(500), nullable=False)
-    status          = Column(String(50),  default="pending")   # pending/running/complete/failed
+    status          = Column(String(50),  default="pending")
     chunks_count    = Column(Integer,     default=0)
     files_count     = Column(Integer,     default=0)
     vectors_count   = Column(Integer,     default=0)
     ingested_at     = Column(DateTime,    nullable=True)
-    collection_name = Column(String(100), nullable=True)        # ChromaDB collection name
-    chat_history    = Column(JSON,        default=list)         # list of message dicts
-    error_message   = Column(Text,        nullable=True)        # if ingestion failed
+    collection_name = Column(String(100), nullable=True)
+    chat_history    = Column(JSON,        default=list)
+    error_message   = Column(Text,        nullable=True)
     created_at      = Column(DateTime,    default=datetime.utcnow)
     updated_at      = Column(DateTime,    default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Each user can only have one session per repo
     __table_args__ = (
         UniqueConstraint("user_id", "repo_url", name="uq_user_repo"),
     )
 
-    # Relationships
     user = relationship("User", back_populates="repo_sessions")
 
     def __repr__(self):
