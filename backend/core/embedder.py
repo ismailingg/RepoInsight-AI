@@ -94,9 +94,18 @@ def embed_batch(chunks: List[Dict], provider: str, api_key: str, model: str) -> 
 
 
 def get_or_create_collection(repo_url: str, user_id: str = ""):
-    combined = f"{user_id}:{repo_url}"
+    combined  = f"{user_id}:{repo_url}"
     repo_hash = hashlib.md5(combined.encode()).hexdigest()[:16]
     collection_name = f"repo_{repo_hash}"
+    collection = chroma_client.get_or_create_collection(
+        name     = collection_name,
+        metadata = {"repo_url": repo_url}
+    )
+    if collection is None:
+        raise RuntimeError(
+            "ChromaDB returned None — delete data/chroma_db and re-ingest."
+        )
+    return collection
 
 
 def store_embeddings(collection, chunks: List[Dict], embeddings: List[List[float]]):
