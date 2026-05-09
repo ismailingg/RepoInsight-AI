@@ -3,15 +3,31 @@ import json
 import hashlib
 import time
 from typing import List, Dict
-import chromadb
-from backend.config import CHROMA_DB_PATH, EMBEDDING_BATCH_SIZE
+from qdrant_client import QdrantClient
+from qdrant_client.models import (
+    Distance, VectorParams, PointStruct, Filter,
+    FieldCondition, MatchValue
+)
+from backend.config import QDRANT_URL, QDRANT_API_KEY, EMBEDDING_BATCH_SIZE
 
-chroma_client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
+# ── Qdrant client (singleton) ────────────────────────────────────
+# Locally:   QdrantClient(path="./data/qdrant") for local file-based storage
+# On Render: QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY) for cloud
+if QDRANT_URL:
+    qdrant_client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+    print(f"[QDRANT] Connected to cloud: {QDRANT_URL}")
+else:
+    from backend.config import QDRANT_LOCAL_PATH
+    os.makedirs(QDRANT_LOCAL_PATH, exist_ok=True)
+    qdrant_client = QdrantClient(path=QDRANT_LOCAL_PATH)
+    print(f"[QDRANT] Using local storage: {QDRANT_LOCAL_PATH}")
 
 MAX_EMBEDDING_CHARS = 8000
 CHECKPOINT_FILE     = "./data/embedding_checkpoint.json"
 DELAY_BETWEEN_CALLS = 4.5
 
+
+# ── Checkpoint helpers ───────────────────────────────────────────
 
 def save_checkpoint(processed_ids: set):
     os.makedirs(os.path.dirname(CHECKPOINT_FILE), exist_ok=True)
@@ -36,6 +52,8 @@ def hash_content(content: str) -> str:
     return hashlib.md5(content.encode()).hexdigest()
 
 
+# ── Dedup / truncate ─────────────────────────────────────────────
+
 def deduplicate_chunks(chunks: List[Dict]) -> tuple[List[Dict], int]:
     seen_hashes = {}
     unique_chunks = []
@@ -57,6 +75,8 @@ def truncate_content(content: str) -> str:
     print(f"[WARN] Truncated chunk from {len(content)} to {MAX_EMBEDDING_CHARS} chars")
     return content[:MAX_EMBEDDING_CHARS]
 
+
+# ── Embedding helpers ────────────────────────────────────────────
 
 def embed_single(text: str, provider: str, api_key: str, model: str) -> List[float]:
     from backend.utils.embedding import embed_text
@@ -93,35 +113,53 @@ def embed_batch(chunks: List[Dict], provider: str, api_key: str, model: str) -> 
     return embeddings
 
 
-def get_or_create_collection(repo_url: str, user_id: str = ""):
+# ── Qdrant collection helpers ────────────────────────────────────
+
+def get_collection_name(repo_url: str, user_id: str = "") -> str:
     combined  = f"{user_id}:{repo_url}"
     repo_hash = hashlib.md5(combined.encode()).hexdigest()[:16]
-    collection_name = f"repo_{repo_hash}"
-    collection = chroma_client.get_or_create_collection(
-        name     = collection_name,
-        metadata = {"repo_url": repo_url}
-    )
-    if collection is None:
-        raise RuntimeError(
-            "ChromaDB returned None — delete data/chroma_db and re-ingest."
+    return f"repo_{repo_hash}"
+
+
+def ensure_collection(collection_name: str, vector_size: int):
+    """Create Qdrant collection if it doesn't exist."""
+    existing = [c.name for c in qdrant_client.get_collections().collections]
+    if collection_name not in existing:
+        qdrant_client.create_collection(
+            collection_name = collection_name,
+            vectors_config  = VectorParams(
+                size     = vector_size,
+                distance = Distance.COSINE
+            )
         )
-    return collection
+        print(f"  ✓ Created collection: {collection_name}")
+    else:
+        print(f"  ✓ Collection exists: {collection_name}")
 
 
-def store_embeddings(collection, chunks: List[Dict], embeddings: List[List[float]]):
-    collection.add(
-        ids       = [c["chunk_id"]      for c in chunks],
-        embeddings= embeddings,
-        documents = [c["content"]       for c in chunks],
-        metadatas = [{
-            "file":       c["relative_path"],
-            "start_line": c["start_line"],
-            "end_line":   c["end_line"],
-            "language":   c["language"],
-            "chunk_type": c["chunk_type"]
-        } for c in chunks]
-    )
+def store_embeddings(collection_name: str, chunks: List[Dict], embeddings: List[List[float]]):
+    """Upsert points into Qdrant collection."""
+    points = []
+    for chunk, vector in zip(chunks, embeddings):
+        # Qdrant needs integer or UUID point IDs — use int from chunk_id hash
+        point_id = int(hashlib.md5(chunk["chunk_id"].encode()).hexdigest()[:8], 16)
+        points.append(PointStruct(
+            id      = point_id,
+            vector  = vector,
+            payload = {
+                "chunk_id":   chunk["chunk_id"],
+                "content":    chunk["content"],
+                "file":       chunk["relative_path"],
+                "start_line": chunk["start_line"],
+                "end_line":   chunk["end_line"],
+                "language":   chunk["language"],
+                "chunk_type": chunk["chunk_type"],
+            }
+        ))
+    qdrant_client.upsert(collection_name=collection_name, points=points)
 
+
+# ── Main entry point ─────────────────────────────────────────────
 
 def embed_and_store(
     chunks:   List[Dict],
@@ -129,7 +167,7 @@ def embed_and_store(
     provider: str,
     api_key:  str,
     model:    str = None,
-    user_id=""
+    user_id:  str = ""
 ) -> Dict:
     from backend.utils.embedding import DEFAULT_EMBEDDING_MODELS
     model = model or DEFAULT_EMBEDDING_MODELS.get(provider, "models/gemini-embedding-001")
@@ -155,24 +193,42 @@ def embed_and_store(
         clear_checkpoint()
         return {"total_chunks": len(chunks), "unique_chunks": len(chunks)-num_duplicates, "embedded": 0}
 
-    print("\n[3/4] Preparing ChromaDB collection...")
-    collection = get_or_create_collection(repo_url, user_id)
-    print(f"  ✓ Collection: {collection.name}")
+    print("\n[3/4] Preparing Qdrant collection...")
+    collection_name = get_collection_name(repo_url, user_id)
+
+    # Embed one chunk first to get vector size, then create collection
+    sample_text      = truncate_content(unique_chunks[0]["content"]) or "sample"
+    sample_embedding = embed_single(sample_text, provider, api_key, model)
+    vector_size      = len(sample_embedding)
+    ensure_collection(collection_name, vector_size)
 
     total_batches  = (len(unique_chunks) + EMBEDDING_BATCH_SIZE - 1) // EMBEDDING_BATCH_SIZE
     estimated_mins = (len(unique_chunks) * DELAY_BETWEEN_CALLS) / 60
     print(f"\n[4/4] Embedding {len(unique_chunks)} chunks (~{estimated_mins:.0f} min)...\n")
 
-    batch_count = 0
+    batch_count    = 0
     embedded_count = 0
 
-    for i in range(0, len(unique_chunks), EMBEDDING_BATCH_SIZE):
-        batch = unique_chunks[i:i + EMBEDDING_BATCH_SIZE]
+    # Handle the first chunk separately since we already embedded it
+    first_chunk = unique_chunks[0]
+    try:
+        store_embeddings(collection_name, [first_chunk], [sample_embedding])
+        processed_ids.add(first_chunk["chunk_id"])
+        save_checkpoint(processed_ids)
+        embedded_count += 1
+    except Exception as e:
+        return {"total_chunks": len(chunks), "unique_chunks": len(chunks)-num_duplicates,
+                "embedded": 0, "error": str(e)}
+
+    remaining_chunks = unique_chunks[1:]
+
+    for i in range(0, len(remaining_chunks), EMBEDDING_BATCH_SIZE):
+        batch = remaining_chunks[i:i + EMBEDDING_BATCH_SIZE]
         batch_count += 1
         print(f"  Batch {batch_count}/{total_batches} ({len(batch)} chunks)...", end=" ", flush=True)
         try:
             embeddings = embed_batch(batch, provider, api_key, model)
-            store_embeddings(collection, batch, embeddings)
+            store_embeddings(collection_name, batch, embeddings)
             processed_ids.update(c["chunk_id"] for c in batch)
             save_checkpoint(processed_ids)
             embedded_count += len(batch)
@@ -185,10 +241,10 @@ def embed_and_store(
             }
 
     clear_checkpoint()
-    print(f"\n✓ Phase 3 complete! Collection: {collection.name}")
+    print(f"\n✓ Phase 3 complete! Collection: {collection_name}")
     return {
         "total_chunks":    len(chunks),
         "unique_chunks":   len(chunks) - num_duplicates,
         "embedded":        embedded_count,
-        "collection_name": collection.name
+        "collection_name": collection_name
     }

@@ -1,5 +1,7 @@
 # render.yaml — Render Blueprint for RepoInsight AI
-# Database is hosted on Neon (neon.tech) — set DATABASE_URL manually in dashboard
+# Vectors: Qdrant Cloud (qdrant.tech)
+# Database: Neon (neon.tech)
+# Both are set manually as env vars in the Render dashboard
 
 services:
 
@@ -12,25 +14,23 @@ services:
     rootDir: .
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn backend.Main:app --host 0.0.0.0 --port $PORT
-    disk:
-      name: repoinsight-data
-      mountPath: /data
-      sizeGB: 1
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.0"
-      - key: CHROMA_DB_PATH
-        value: /data/chroma_db
       - key: TEMP_REPOS_PATH
-        value: /data/temp_repos
+        value: /tmp/repos         # ephemeral is fine — repos are cloned and deleted per-ingest
       - key: DATABASE_URL
-        sync: false        # paste your Neon connection string here in Render dashboard
+        sync: false               # paste Neon connection string
+      - key: QDRANT_URL
+        sync: false               # paste Qdrant Cloud cluster URL
+      - key: QDRANT_API_KEY
+        sync: false               # paste Qdrant Cloud API key
       - key: SECRET_KEY
         generateValue: true
       - key: APP_SECRET
         generateValue: true
       - key: APP_BASE_URL
-        sync: false        # your Streamlit frontend URL e.g. https://repoinsight-frontend.onrender.com
+        sync: false               # e.g. https://repoinsight-frontend.onrender.com
       - key: SMTP_EMAIL
         sync: false
       - key: SMTP_PASSWORD
@@ -49,4 +49,4 @@ services:
       - key: PYTHON_VERSION
         value: "3.11.0"
       - key: API_BASE
-        sync: false        # your backend URL e.g. https://repoinsight-backend.onrender.com
+        sync: false               # e.g. https://repoinsight-backend.onrender.com

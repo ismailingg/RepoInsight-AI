@@ -175,20 +175,19 @@ def delete_repo(
     if not session:
         raise HTTPException(status_code=404, detail="Repo session not found")
 
-    # Delete ChromaDB collection for this user+repo
+    # Delete Qdrant collection for this user+repo
     try:
         import hashlib
-        import chromadb
-        from backend.config import CHROMA_DB_PATH
-        combined    = f"{str(current_user.id)}:{repo_url}"
-        repo_hash   = hashlib.md5(combined.encode()).hexdigest()[:16]
-        collection  = f"repo_{repo_hash}"
-        chroma      = chromadb.PersistentClient(path=CHROMA_DB_PATH)
-        chroma.delete_collection(collection)
-        print(f"[DELETE] ChromaDB collection deleted: {collection}")
+        from qdrant_client import QdrantClient
+        from backend.config import QDRANT_URL, QDRANT_API_KEY, QDRANT_LOCAL_PATH
+        combined        = f"{str(current_user.id)}:{repo_url}"
+        repo_hash       = hashlib.md5(combined.encode()).hexdigest()[:16]
+        collection_name = f"repo_{repo_hash}"
+        client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY) if QDRANT_URL                  else QdrantClient(path=QDRANT_LOCAL_PATH)
+        client.delete_collection(collection_name)
+        print(f"[DELETE] Qdrant collection deleted: {collection_name}")
     except Exception as e:
-        # Don't fail the whole request if chroma cleanup fails
-        print(f"[DELETE] ChromaDB cleanup warning: {e}")
+        print(f"[DELETE] Qdrant cleanup warning: {e}")
 
     db.delete(session)
     db.commit()

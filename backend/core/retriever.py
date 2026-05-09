@@ -2,10 +2,16 @@ import os
 import re
 import hashlib
 from typing import List, Dict, Optional
-import chromadb
-from backend.config import CHROMA_DB_PATH
+from qdrant_client import QdrantClient
+from qdrant_client.models import Filter, FieldCondition, MatchValue
+from backend.config import QDRANT_URL, QDRANT_API_KEY
 
-chroma_client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
+# ── Qdrant client (singleton) ────────────────────────────────────
+if QDRANT_URL:
+    qdrant_client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+else:
+    from backend.config import QDRANT_LOCAL_PATH
+    qdrant_client = QdrantClient(path=QDRANT_LOCAL_PATH)
 
 SEMANTIC_TOP_K   = 10
 GREP_MAX_RESULTS = 15
@@ -14,35 +20,45 @@ PRIORITY_FILES = ["app.py", "main.py", "index.js", "__init__.py",
                   "views.py", "models.py", "routes.py", "middleware.py"]
 
 
+def get_collection_name(repo_url: str, user_id: str = "") -> str:
+    combined  = f"{user_id}:{repo_url}"
+    repo_hash = hashlib.md5(combined.encode()).hexdigest()[:16]
+    return f"repo_{repo_hash}"
+
+
 def embed_question(question: str, provider: str, api_key: str, model: str) -> List[float]:
     from backend.utils.embedding import embed_query
     return embed_query(question, provider, api_key, model)
 
 
-def semantic_search(question: str, collection, provider: str, api_key: str, model: str) -> List[Dict]:
+def semantic_search(
+    question:        str,
+    collection_name: str,
+    provider:        str,
+    api_key:         str,
+    model:           str
+) -> List[Dict]:
     question_vector = embed_question(question, provider, api_key, model)
 
-    results = collection.query(
-        query_embeddings = [question_vector],
-        n_results        = SEMANTIC_TOP_K,
-        include          = ["documents", "metadatas", "distances"]
+    results = qdrant_client.search(
+        collection_name = collection_name,
+        query_vector    = question_vector,
+        limit           = SEMANTIC_TOP_K,
+        with_payload    = True
     )
 
     chunks = []
-    if not results["ids"][0]:
-        return chunks
-
-    for i in range(len(results["ids"][0])):
-        distance   = results["distances"][0][i]
-        similarity = 1 - distance
+    for hit in results:
+        payload    = hit.payload
+        similarity = hit.score  # Qdrant cosine score is already 0-1
         chunks.append({
-            "chunk_id":   results["ids"][0][i],
-            "content":    results["documents"][0][i],
-            "file":       results["metadatas"][0][i]["file"],
-            "start_line": results["metadatas"][0][i]["start_line"],
-            "end_line":   results["metadatas"][0][i]["end_line"],
-            "language":   results["metadatas"][0][i]["language"],
-            "chunk_type": results["metadatas"][0][i]["chunk_type"],
+            "chunk_id":   payload.get("chunk_id",   hit.id),
+            "content":    payload.get("content",    ""),
+            "file":       payload.get("file",       ""),
+            "start_line": payload.get("start_line", 0),
+            "end_line":   payload.get("end_line",   0),
+            "language":   payload.get("language",   ""),
+            "chunk_type": payload.get("chunk_type", ""),
             "similarity": round(similarity, 4),
             "source":     "semantic"
         })
@@ -56,7 +72,7 @@ def extract_identifiers(question: str) -> List[str]:
     identifiers.extend(re.findall(r'\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b', question))
     identifiers.extend(re.findall(r'\b[A-Z][a-z]+(?:[A-Z][a-zA-Z]*)+\b', question))
 
-    seen = set()
+    seen   = set()
     unique = []
     for i in identifiers:
         if i not in seen:
@@ -77,7 +93,7 @@ def grep_search(identifiers: List[str], all_chunks: List[Dict]) -> List[Dict]:
         return []
 
     matched_chunks = []
-    seen_ids = set()
+    seen_ids       = set()
 
     for identifier in identifiers:
         matches_for_id = []
@@ -87,16 +103,16 @@ def grep_search(identifiers: List[str], all_chunks: List[Dict]) -> List[Dict]:
                 if chunk_id not in seen_ids:
                     seen_ids.add(chunk_id)
                     matches_for_id.append({
-                        "chunk_id":            chunk_id,
-                        "content":             chunk["content"],
-                        "file":                chunk["relative_path"],
-                        "start_line":          chunk["start_line"],
-                        "end_line":            chunk["end_line"],
-                        "language":            chunk["language"],
-                        "chunk_type":          chunk["chunk_type"],
-                        "similarity":          0.5,
-                        "source":              "grep",
-                        "matched_identifier":  identifier
+                        "chunk_id":           chunk_id,
+                        "content":            chunk["content"],
+                        "file":               chunk["relative_path"],
+                        "start_line":         chunk["start_line"],
+                        "end_line":           chunk["end_line"],
+                        "language":           chunk["language"],
+                        "chunk_type":         chunk["chunk_type"],
+                        "similarity":         0.5,
+                        "source":             "grep",
+                        "matched_identifier": identifier
                     })
 
         matches_for_id.sort(key=lambda c: file_importance_score(c["file"]), reverse=True)
@@ -146,17 +162,7 @@ def retrieve(
     user_id:    str  = ""
 ) -> Dict:
     """
-    Main Phase 4 entry point.
-
-    Args:
-        question:   User's natural language question
-        repo_url:   GitHub URL (to find the right ChromaDB collection)
-        all_chunks: All chunks from Phase 2 (for grep search)
-        provider:   Embedding provider (google / openai)
-        api_key:    User's decrypted embedding API key
-        model:      Embedding model name
-        repo_path:  Path to cloned repo (for stale validation)
-        user_id:    User ID for per-user collection isolation
+    Main Phase 4 entry point — Hybrid semantic + grep retrieval using Qdrant.
     """
     from backend.utils.embedding import DEFAULT_EMBEDDING_MODELS
     model = model or DEFAULT_EMBEDDING_MODELS.get(provider, "models/gemini-embedding-001")
@@ -164,13 +170,11 @@ def retrieve(
     print(f"\n=== Phase 4: Hybrid Retrieval ===")
     print(f"Question: {question}")
 
-    combined   = f"{user_id}:{repo_url}"
-    repo_hash  = hashlib.md5(combined.encode()).hexdigest()[:16]
-    collection = chroma_client.get_collection(f"repo_{repo_hash}")
+    collection_name = get_collection_name(repo_url, user_id)
 
     # Semantic search
     print("\n[1/3] Semantic search...")
-    semantic_chunks = semantic_search(question, collection, provider, api_key, model)
+    semantic_chunks = semantic_search(question, collection_name, provider, api_key, model)
     if not semantic_chunks:
         print("  [WARN] Zero semantic results — falling back to grep only")
     else:

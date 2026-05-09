@@ -12,8 +12,15 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 EMBEDDING_BATCH_SIZE = 20
 MAX_FILES_PER_REPO   = 1000
 
-# Paths — use env vars so they work both locally and on Render
-# Locally:  ./data/chroma_db  (relative)
-# On Render: /data/chroma_db  (persistent disk mounted at /data)
-CHROMA_DB_PATH  = os.getenv("CHROMA_DB_PATH",  "./data/chroma_db")
+# Qdrant — cloud (Render) vs local (development)
+# Set QDRANT_URL + QDRANT_API_KEY in .env / Render dashboard for cloud
+# Leave blank to use local file-based storage for development
+QDRANT_URL        = os.getenv("QDRANT_URL", "")
+QDRANT_API_KEY    = os.getenv("QDRANT_API_KEY", "")
+QDRANT_LOCAL_PATH = os.getenv("QDRANT_LOCAL_PATH", "./data/qdrant")
+
+# Legacy paths (kept for temp repo cloning)
 TEMP_REPOS_PATH = os.getenv("TEMP_REPOS_PATH", "./data/temp_repos")
+
+# Kept for backward compat — no longer used for vector storage
+CHROMA_DB_PATH = os.getenv("CHROMA_DB_PATH", "./data/chroma_db")
