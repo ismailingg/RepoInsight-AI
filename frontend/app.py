@@ -5,6 +5,15 @@ import streamlit as st
 import os
 API_BASE = os.getenv("API_BASE", "http://localhost:8000")
 
+def api_error(resp, fallback="Something went wrong"):
+    """Safely extract error detail from an API response."""
+    try:
+        return resp.json().get("detail", fallback)
+    except Exception:
+        return resp.text.strip() or fallback
+
+
+
 st.set_page_config(
     page_title="RepoInsight AI",
     page_icon="⬡",
@@ -165,7 +174,7 @@ if not st.session_state.token:
                 save_token_to_url(d["token"], d["email"])
                 st.success("✓ Email verified! Welcome to RepoInsight. Add your API keys below.")
             else:
-                st.error(r.json().get("detail", "Verification failed. Try registering again."))
+                st.error(api_error(r, "Verification failed. Try registering again."))
         except Exception as e:
             st.error(f"Could not reach server: {e}")
 
@@ -279,9 +288,9 @@ def show_login():
                             if resend.status_code == 200:
                                 st.success("Verification email resent. Check your inbox.")
                             else:
-                                st.error(resend.json().get("detail", "Could not resend"))
+                                st.error(api_error(resend, "Could not resend"))
                     else:
-                        st.error(r.json().get("detail", "Login failed"))
+                        st.error(api_error(r, "Login failed"))
                 else:
                     st.error("Email and password required")
 
@@ -322,7 +331,7 @@ def show_login():
                         st.session_state["pending_verify_email"] = reg_email
                         st.rerun()
                     else:
-                        st.error(r.json().get("detail", "Registration failed"))
+                        st.error(api_error(r, "Registration failed"))
                 else:
                     st.error("Email and password required")
 
@@ -549,7 +558,7 @@ def show_settings():
                 if r and r.status_code == 201:
                     st.success(f"✓ {ep} embedding key saved"); st.rerun()
                 else:
-                    st.error(r.json().get("detail") if r else "Failed")
+                    st.error(api_error(r) if r else "Failed")
 
     with right:
         st.markdown('<div style="font-size:9px;color:#ff5000;letter-spacing:0.18em;text-transform:uppercase;font-family:Space Mono,monospace;margin-bottom:16px;">LLM Provider</div>', unsafe_allow_html=True)
@@ -594,7 +603,7 @@ def show_settings():
                 if r and r.status_code == 201:
                     st.success(f"✓ {lp} LLM key saved"); st.rerun()
                 else:
-                    st.error(r.json().get("detail") if r else "Failed")
+                    st.error(api_error(r) if r else "Failed")
 
     if existing:
         st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
@@ -657,7 +666,7 @@ def show_settings():
                         st.session_state[k] = v
                     st.rerun()
                 else:
-                    st.error(r.json().get("detail", "Failed to delete account"))
+                    st.error(api_error(r, "Failed to delete account"))
         with col2:
             if st.button("CANCEL", type="secondary", key="cancel_del_account"):
                 del st.session_state["confirm_delete_account"]
