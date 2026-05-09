@@ -35,54 +35,58 @@ class AuthResponse(BaseModel):
 
 @router.post("/register", status_code=201)
 def register(req: RegisterRequest, db: Session = Depends(get_db)):
-    if len(req.password) < 8:
-        raise HTTPException(422, detail="Password must be at least 8 characters")
+    try:
+        if len(req.password) < 8:
+            raise HTTPException(422, detail="Password must be at least 8 characters")
 
-    existing = db.query(User).filter(User.email == req.email).first()
-    if existing:
-        if existing.is_verified:
-            raise HTTPException(409, detail="An account with this email already exists")
-        else:
-            # Resend verification for unverified account
-            token                      = secrets.token_urlsafe(32)
-            existing.verification_token = token
-            existing.token_expires_at   = datetime.utcnow() + timedelta(hours=PENDING_EXPIRE_HOURS)
+        existing = db.query(User).filter(User.email == req.email).first()
+        if existing:
+            if existing.is_verified:
+                raise HTTPException(409, detail="An account with this email already exists")
+            else:
+                token                       = secrets.token_urlsafe(32)
+                existing.verification_token = token
+                existing.token_expires_at   = datetime.utcnow() + timedelta(hours=PENDING_EXPIRE_HOURS)
+                db.commit()
+                try:
+                    send_verification_email(existing.email, token)
+                except Exception as e:
+                    raise HTTPException(500, detail=f"Could not send verification email: {e}")
+                return {"message": "Verification email resent. Check your inbox.", "email": existing.email}
+
+        token      = secrets.token_urlsafe(32)
+        expires_at = datetime.utcnow() + timedelta(hours=PENDING_EXPIRE_HOURS)
+
+        user = User(
+            email               = req.email,
+            password_hash       = hash_password(req.password),
+            is_verified         = False,
+            verification_token  = token,
+            token_expires_at    = expires_at
+        )
+        db.add(user)
+        try:
             db.commit()
-            try:
-                send_verification_email(existing.email, token)
-            except Exception as e:
-                raise HTTPException(500, detail=f"Could not send verification email: {e}")
-            return {"message": "Verification email resent. Check your inbox.", "email": existing.email}
+            db.refresh(user)
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(409, detail="An account with this email already exists")
 
-    token      = secrets.token_urlsafe(32)
-    expires_at = datetime.utcnow() + timedelta(hours=PENDING_EXPIRE_HOURS)
+        try:
+            send_verification_email(req.email, token)
+        except Exception as e:
+            db.delete(user)
+            db.commit()
+            raise HTTPException(500, detail=f"Could not send verification email: {e}. Check SMTP settings in .env")
 
-    user = User(
-        email               = req.email,
-        password_hash       = hash_password(req.password),
-        is_verified         = False,
-        verification_token  = token,
-        token_expires_at    = expires_at
-    )
-    db.add(user)
-    try:
-        db.commit()
-        db.refresh(user)
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(409, detail="An account with this email already exists")
-
-    try:
-        send_verification_email(req.email, token)
+        return {
+            "message": "Check your email to verify your account before logging in.",
+            "email":   req.email
+        }
+    except HTTPException:
+        raise
     except Exception as e:
-        db.delete(user)
-        db.commit()
-        raise HTTPException(500, detail=f"Could not send verification email: {e}. Check SMTP settings in .env")
-
-    return {
-        "message": "Check your email to verify your account before logging in.",
-        "email":   req.email
-    }
+        raise HTTPException(500, detail=f"{type(e).__name__}: {e}")
 
 
 @router.get("/verify")
