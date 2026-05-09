@@ -31,10 +31,12 @@ services:
         generateValue: true
       - key: APP_BASE_URL
         sync: false               # e.g. https://repoinsight-frontend.onrender.com
-      - key: SMTP_EMAIL
+      - key: BREVO_API_KEY
         sync: false
-      - key: SMTP_PASSWORD
+      - key: BREVO_FROM_EMAIL
         sync: false
+      - key: BREVO_FROM_NAME
+        value: "RepoInsight AI"
 
   # ── Streamlit Frontend ──────────────────────────────────────────
   - type: web

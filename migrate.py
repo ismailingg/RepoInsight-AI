@@ -57,3 +57,30 @@ def init_db():
     from backend.db import models  # noqa: F401
     Base.metadata.create_all(bind=engine)
     print("✓ Database tables ready")
+
+
+def run_migrations():
+    """Execute all .sql files in backend/db/migrations/."""
+    import glob
+    from sqlalchemy import text
+
+    migrations_path = os.path.join("backend", "db", "migrations", "*.sql")
+    sql_files = sorted(glob.glob(migrations_path))
+
+    if not sql_files:
+        print("  ! No migration files found in backend/db/migrations/")
+        return
+
+    with engine.connect() as conn:
+        for file_path in sql_files:
+            print(f"  → Running migration: {os.path.basename(file_path)}")
+            try:
+                with open(file_path, "r") as f:
+                    content = f.read()
+                    if content.strip():
+                        conn.execute(text(content))
+                conn.commit()
+            except Exception as e:
+                print(f"  [ERROR] Migration {os.path.basename(file_path)} failed: {e}")
+                conn.rollback()
+    print("✓ All migrations applied")
