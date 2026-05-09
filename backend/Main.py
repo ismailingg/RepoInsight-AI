@@ -23,7 +23,20 @@ app.add_middleware(
 
 @app.on_event("startup")
 def startup():
+    import os
+    from backend.config import CHROMA_DB_PATH, TEMP_REPOS_PATH
+    # Ensure data directories exist (important on Render persistent disk)
+    os.makedirs(CHROMA_DB_PATH,  exist_ok=True)
+    os.makedirs(TEMP_REPOS_PATH, exist_ok=True)
+    print(f"[STARTUP] Data dirs ready: {CHROMA_DB_PATH}, {TEMP_REPOS_PATH}")
+    # Run SQLAlchemy table creation (idempotent)
     init_db()
+    # Run SQL migrations
+    try:
+        from migrate import run_migrations
+        run_migrations()
+    except Exception as e:
+        print(f"[STARTUP] Migration warning: {e}")
 
 app.include_router(auth_router,     tags=["Auth"])
 app.include_router(keys_router,     tags=["API Keys"])

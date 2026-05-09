@@ -1,0 +1,52 @@
+# render.yaml — Render Blueprint for RepoInsight AI
+# Database is hosted on Neon (neon.tech) — set DATABASE_URL manually in dashboard
+
+services:
+
+  # ── FastAPI Backend ─────────────────────────────────────────────
+  - type: web
+    name: repoinsight-backend
+    runtime: python
+    region: oregon
+    plan: free
+    rootDir: .
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend.Main:app --host 0.0.0.0 --port $PORT
+    disk:
+      name: repoinsight-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+      - key: CHROMA_DB_PATH
+        value: /data/chroma_db
+      - key: TEMP_REPOS_PATH
+        value: /data/temp_repos
+      - key: DATABASE_URL
+        sync: false        # paste your Neon connection string here in Render dashboard
+      - key: SECRET_KEY
+        generateValue: true
+      - key: APP_SECRET
+        generateValue: true
+      - key: APP_BASE_URL
+        sync: false        # your Streamlit frontend URL e.g. https://repoinsight-frontend.onrender.com
+      - key: SMTP_EMAIL
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+
+  # ── Streamlit Frontend ──────────────────────────────────────────
+  - type: web
+    name: repoinsight-frontend
+    runtime: python
+    region: oregon
+    plan: free
+    rootDir: .
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run frontend/app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+      - key: API_BASE
+        sync: false        # your backend URL e.g. https://repoinsight-backend.onrender.com

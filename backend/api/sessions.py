@@ -164,8 +164,8 @@ def delete_repo(
     current_user: User    = Depends(get_current_user)
 ):
     """
-    Delete a repo session entirely.
-    Note: does NOT delete the ChromaDB collection — that needs separate cleanup.
+    Delete a repo session and its ChromaDB collection.
+    Called when the user clicks Delete on a repo.
     """
     session = db.query(RepoSession).filter(
         RepoSession.user_id  == current_user.id,
@@ -175,7 +175,22 @@ def delete_repo(
     if not session:
         raise HTTPException(status_code=404, detail="Repo session not found")
 
+    # Delete ChromaDB collection for this user+repo
+    try:
+        import hashlib
+        import chromadb
+        from backend.config import CHROMA_DB_PATH
+        combined    = f"{str(current_user.id)}:{repo_url}"
+        repo_hash   = hashlib.md5(combined.encode()).hexdigest()[:16]
+        collection  = f"repo_{repo_hash}"
+        chroma      = chromadb.PersistentClient(path=CHROMA_DB_PATH)
+        chroma.delete_collection(collection)
+        print(f"[DELETE] ChromaDB collection deleted: {collection}")
+    except Exception as e:
+        # Don't fail the whole request if chroma cleanup fails
+        print(f"[DELETE] ChromaDB cleanup warning: {e}")
+
     db.delete(session)
     db.commit()
 
-    return {"message": f"Repo session deleted: {repo_url}"}
+    return {"message": f"Repo deleted: {repo_url}"}

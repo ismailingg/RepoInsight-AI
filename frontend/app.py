@@ -2,7 +2,8 @@ import time
 import requests
 import streamlit as st
 
-API_BASE = "http://localhost:8000"
+import os
+API_BASE = os.getenv("API_BASE", "http://localhost:8000")
 
 st.set_page_config(
     page_title="RepoInsight AI",
@@ -368,14 +369,42 @@ def show_sidebar():
             for repo_url in list(st.session_state.repos.keys()):
                 short     = repo_url.replace("https://github.com/", "")
                 is_active = (st.session_state.active_repo == repo_url)
-                label     = f"{'● ' if is_active else '○ '}{short[:26]}{'…' if len(short)>26 else ''}"
-                if st.button(label, key=f"repo_{repo_url}", type="secondary", use_container_width=True):
-                    st.session_state.active_repo = repo_url
-                    chat_resp = api("GET", f"/repos/chat?repo_url={repo_url}")
-                    if chat_resp and chat_resp.status_code == 200:
-                        st.session_state.repos[repo_url]["chat_history"] = chat_resp.json()["chat_history"]
-                    st.session_state.page = "query"
-                    st.rerun()
+                label     = f"{'● ' if is_active else '○ '}{short[:24]}{'…' if len(short)>24 else ''}"
+                col_r, col_d = st.columns([5, 1])
+                with col_r:
+                    if st.button(label, key=f"repo_{repo_url}", type="secondary", use_container_width=True):
+                        st.session_state.active_repo = repo_url
+                        chat_resp = api("GET", f"/repos/chat?repo_url={repo_url}")
+                        if chat_resp and chat_resp.status_code == 200:
+                            st.session_state.repos[repo_url]["chat_history"] = chat_resp.json()["chat_history"]
+                        st.session_state.page = "query"
+                        st.rerun()
+                with col_d:
+                    if st.button("✕", key=f"del_{repo_url}", type="secondary", help="Delete this repo index"):
+                        st.session_state[f"confirm_del_{repo_url}"] = True
+                        st.rerun()
+                # Confirmation row
+                if st.session_state.get(f"confirm_del_{repo_url}"):
+                    st.markdown(
+                        f'<div style="font-size:9px;color:#ff5000;font-family:Space Mono,monospace;'
+                        f'padding:4px 0;">Delete {short[:20]}?</div>',
+                        unsafe_allow_html=True
+                    )
+                    ca, cb = st.columns(2)
+                    with ca:
+                        if st.button("YES", key=f"yes_{repo_url}", type="primary", use_container_width=True):
+                            r = api("DELETE", f"/repos/{repo_url}")
+                            if r and r.status_code == 200:
+                                del st.session_state.repos[repo_url]
+                                if st.session_state.active_repo == repo_url:
+                                    st.session_state.active_repo = None
+                                    st.session_state.page = "ingest"
+                            del st.session_state[f"confirm_del_{repo_url}"]
+                            st.rerun()
+                    with cb:
+                        if st.button("NO", key=f"no_{repo_url}", type="secondary", use_container_width=True):
+                            del st.session_state[f"confirm_del_{repo_url}"]
+                            st.rerun()
         else:
             st.markdown("""
             <div style='font-size:10px;color:#2a2a2a;font-family:Space Mono,monospace;'>
@@ -591,6 +620,48 @@ def show_settings():
                 </div>
             </div>
             """, unsafe_allow_html=True)
+
+    # ── Danger zone ──────────────────────────────────────────────
+    st.markdown("<div style='height:48px'></div>", unsafe_allow_html=True)
+    st.markdown("""
+    <div style='border:1px solid #2a0000;border-left:3px solid #cc0000;background:#0f0000;
+                padding:24px;'>
+        <div style='font-size:9px;color:#cc0000;letter-spacing:0.18em;text-transform:uppercase;
+                    font-family:Space Mono,monospace;margin-bottom:10px;'>Danger Zone</div>
+        <div style='font-size:11px;color:#666;font-family:Space Mono,monospace;line-height:1.9;'>
+            Permanently delete your account, all API keys, all indexed repos,
+            and all chat history.<br>
+            <span style='color:#444;'>This cannot be undone.</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    if not st.session_state.get("confirm_delete_account"):
+        if st.button("DELETE MY ACCOUNT", type="secondary", key="req_del_account"):
+            st.session_state["confirm_delete_account"] = True
+            st.rerun()
+    else:
+        st.markdown("""
+        <div style='font-size:11px;color:#cc0000;font-family:Space Mono,monospace;
+                    padding:12px 0;'>
+            Are you sure? This will erase everything permanently.
+        </div>
+        """, unsafe_allow_html=True)
+        col1, col2, _ = st.columns([1, 1, 3])
+        with col1:
+            if st.button("YES, DELETE", type="primary", key="confirm_del_account"):
+                r = api("DELETE", "/auth/account")
+                if r and r.status_code == 200:
+                    clear_token_from_url()
+                    for k, v in defaults.items():
+                        st.session_state[k] = v
+                    st.rerun()
+                else:
+                    st.error(r.json().get("detail", "Failed to delete account"))
+        with col2:
+            if st.button("CANCEL", type="secondary", key="cancel_del_account"):
+                del st.session_state["confirm_delete_account"]
+                st.rerun()
 
 
 # ══════════════════════════════════════════════════════════════════
