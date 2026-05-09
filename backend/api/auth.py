@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from backend.db.connection import get_db
 from backend.db.models import User, RepoSession
 from backend.utils.auth import hash_password, verify_password, create_token, get_current_user
@@ -64,8 +65,12 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
         token_expires_at    = expires_at
     )
     db.add(user)
-    db.commit()
-    db.refresh(user)
+    try:
+        db.commit()
+        db.refresh(user)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, detail="An account with this email already exists")
 
     try:
         send_verification_email(req.email, token)
@@ -165,12 +170,12 @@ def delete_account(
     Also deletes all ChromaDB vector collections for this user's repos.
     """
     import hashlib
-    import chromadb
-    from backend.config import CHROMA_DB_PATH
+    from qdrant_client import QdrantClient
+    from backend.config import QDRANT_URL, QDRANT_API_KEY, QDRANT_LOCAL_PATH
 
-    # Delete ChromaDB collections first
+    # Delete Qdrant collections for all user repos
     try:
-        chroma   = chromadb.PersistentClient(path=CHROMA_DB_PATH)
+        client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY) if QDRANT_URL                  else QdrantClient(path=QDRANT_LOCAL_PATH)
         sessions = db.query(RepoSession).filter(
             RepoSession.user_id == current_user.id
         ).all()
@@ -178,12 +183,12 @@ def delete_account(
             try:
                 combined  = f"{str(current_user.id)}:{s.repo_url}"
                 repo_hash = hashlib.md5(combined.encode()).hexdigest()[:16]
-                chroma.delete_collection(f"repo_{repo_hash}")
+                client.delete_collection(f"repo_{repo_hash}")
                 print(f"[DELETE ACCOUNT] Removed collection repo_{repo_hash}")
             except Exception as e:
-                print(f"[DELETE ACCOUNT] Chroma warning for {s.repo_url}: {e}")
+                print(f"[DELETE ACCOUNT] Qdrant warning for {s.repo_url}: {e}")
     except Exception as e:
-        print(f"[DELETE ACCOUNT] Chroma client error: {e}")
+        print(f"[DELETE ACCOUNT] Qdrant client error: {e}")
 
     # Delete user row — cascade removes api_keys + repo_sessions
     db.delete(current_user)
