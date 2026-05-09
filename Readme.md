@@ -2,7 +2,7 @@
 
 > Ask natural language questions about any GitHub repository and get cited, accurate answers grounded in actual source code.
 
-**Live demo →** [your URL]
+**Live demo →** [RepoInsight.ai](https://repoinsight-frontend.onrender.com/)
 
 ---
 
