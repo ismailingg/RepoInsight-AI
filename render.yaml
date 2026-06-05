@@ -1,7 +1,8 @@
 # render.yaml — Render Blueprint for RepoInsight AI
 # Vectors: Qdrant Cloud (qdrant.tech)
 # Database: Neon (neon.tech)
-# Both are set manually as env vars in the Render dashboard
+# Frontend: Streamlit Community Cloud (share.streamlit.io)
+# Both DB and Qdrant are set manually as env vars in the Render dashboard
 
 services:
 
@@ -18,7 +19,7 @@ services:
       - key: PYTHON_VERSION
         value: "3.11.0"
       - key: TEMP_REPOS_PATH
-        value: /tmp/repos         # ephemeral is fine — repos are cloned and deleted per-ingest
+        value: /tmp/repos
       - key: DATABASE_URL
         sync: false               # paste Neon connection string
       - key: QDRANT_URL
@@ -30,25 +31,12 @@ services:
       - key: APP_SECRET
         generateValue: true
       - key: APP_BASE_URL
-        sync: false               # e.g. https://repoinsight-frontend.onrender.com
-      - key: BREVO_API_KEY
+        sync: false               # your Streamlit Cloud URL e.g. https://repoinsight.streamlit.app
+      - key: EMAILJS_SERVICE_ID
         sync: false
-      - key: BREVO_FROM_EMAIL
+      - key: EMAILJS_TEMPLATE_ID
         sync: false
-      - key: BREVO_FROM_NAME
-        value: "RepoInsight AI"
-
-  # ── Streamlit Frontend ──────────────────────────────────────────
-  - type: web
-    name: repoinsight-frontend
-    runtime: python
-    region: oregon
-    plan: free
-    rootDir: .
-    buildCommand: pip install -r requirements.txt
-    startCommand: streamlit run frontend/app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
-    envVars:
-      - key: PYTHON_VERSION
-        value: "3.11.0"
-      - key: API_BASE
-        sync: false               # e.g. https://repoinsight-backend.onrender.com
+      - key: EMAILJS_PUBLIC_KEY
+        sync: false
+      - key: EMAILJS_PRIVATE_KEY
+        sync: false
